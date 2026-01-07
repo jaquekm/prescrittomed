@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8">
+    <title>Convidar médico</title>
+</head>
+<body>
+    <h1>Convidar médico</h1>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Enviar convite</button>
+    </form>
+</body>
+</html>
