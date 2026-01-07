@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Prescrição Médica</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #eef2f5; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        
+        .grid-layout { display: grid; grid-template-columns: 35% 65%; gap: 25px; margin-top: 20px; }
+        
+        /* Lado Esquerdo: Chat e IA */
+        .panel-ia { background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #dee2e6; }
+        .ia-response { background: #e8f4f8; padding: 15px; border-radius: 5px; font-size: 14px; color: #2c3e50; margin-bottom: 20px; white-space: pre-wrap; }
+        
+        /* Lado Direito: Papel da Receita (Editável) */
+        .panel-receita { background: #fff; border: 2px solid #2c3e50; padding: 0; position: relative; min-height: 500px; display: flex; flex-direction: column; }
+        
+        .receita-header { background: #2c3e50; color: white; padding: 15px; text-align: center; font-weight: bold; text-transform: uppercase; }
+        
+        /* O CAMPO MÁGICO: TEXTAREA QUE PARECE PAPEL */
+        textarea.papel-receita {
+            width: 100%;
+            height: 400px; /* Altura da folha */
+            padding: 30px;
+            border: none;
+            resize: none;
+            font-family: 'Courier New', Courier, monospace; /* Fonte estilo máquina/impressora */
+            font-size: 16px;
+            line-height: 1.6;
+            outline: none;
+            box-sizing: border-box;
+            color: #000;
+        }
+
+        .receita-toolbar { padding: 15px; background: #eee; text-align: right; border-top: 1px solid #ccc; }
+        
+        button { cursor: pointer; padding: 10px 20px; border-radius: 5px; border: none; font-weight: bold; }
+        .btn-blue { background: #3498db; color: white; width: 100%; }
+        .btn-green { background: #27ae60; color: white; }
+        .btn-print { background: #7f8c8d; color: white; text-decoration: none; padding: 10px 20px; border-radius: 5px; display: inline-block; }
+        
+        label { font-weight: bold; display: block; margin-bottom: 5px; }
+        .input-std { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div style="margin-bottom: 20px;">
+            <a href="{% url 'dashboard' %}" style="text-decoration: none; color: #555;">⬅ Voltar ao Painel</a>
+        </div>
+
+        {% if not consulta_id %}
+        <h1>Nova Prescrição</h1>
+        <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="gerar_ia">
+            <label>Paciente:</label>
+            <select name="paciente" class="input-std" required>
+                <option value="">Selecione...</option>
+                {% for p in pacientes %}
+                    <option value="{{ p.id }}">{{ p.nome_completo }}</option>
+                {% endfor %}
+            </select>
+            <label>Caso Clínico / Sintomas:</label>
+            <textarea name="sintomas" class="input-std" rows="4" placeholder="Descreva o quadro..."></textarea>
+            <button type="submit" class="btn-blue">Iniciar Atendimento</button>
+        </form>
+        {% endif %}
+
+        {% if consulta_id %}
+        <div class="grid-layout">
+            
+            <div class="panel-ia">
+                <h3>🤖 Auxiliar Clínico</h3>
+                <div class="ia-response">
+                    <strong>Análise Sugerida:</strong><br>
+                    {{ analise_tecnica }}
+                </div>
+                
+                <form method="POST">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="gerar_ia"> <input type="hidden" name="consulta_id" value="{{ consulta_id }}">
+                    <input type="hidden" name="historico_conversa" value="{{ historico_conversa }}">
+                    
+                    <label>Refinar / Ajustar:</label>
+                    <textarea name="sintomas" class="input-std" rows="3" placeholder="Ex: Paciente alérgico a X, troque por Y..."></textarea>
+                    <button type="submit" class="btn-blue">🔄 Pedir nova sugestão</button>
+                </form>
+            </div>
+
+            <div class="panel-receita">
+                <div class="receita-header">
+                    Receituário Médico - Dr(a). {{ user.username }}
+                </div>
+                
+                <form method="POST" id="form-receita" style="flex-grow: 1; display: flex; flex-direction: column;">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="salvar_edicao"> <input type="hidden" name="consulta_id" value="{{ consulta_id }}">
+
+                    <textarea name="receita_editavel" class="papel-receita">{{ receita_paciente }}</textarea>
+                    
+                    <div class="receita-toolbar">
+                        <span style="float: left; font-size: 12px; color: #666; margin-top: 10px;">
+                            * Edite livremente acima antes de salvar.
+                        </span>
+                        <button type="submit" class="btn-green">💾 1. Salvar Alterações</button>
+                        <a href="{% url 'gerar_receita' consulta_id %}" target="_blank" class="btn-print">🖨️ 2. Imprimir Oficial</a>
+                    </div>
+                </form>
+            </div>
+
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

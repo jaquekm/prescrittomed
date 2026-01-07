@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Painel Médico - Agente Prescritto</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+        .welcome { color: #2c3e50; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+        
+        .card { background: white; padding: 30px; border-radius: 10px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: 0.3s; text-decoration: none; color: #34495e; }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); }
+        .card h3 { margin: 10px 0 0; color: #2c3e50; }
+        .icon { font-size: 40px; margin-bottom: 10px; display: block; }
+        
+        .btn-logout { background-color: #e74c3c; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="welcome">
+                <h1>Olá, Dr(a). {{ user.username }}</h1>
+                <p>Hospital Santa Clara</p>
+            </div>
+            <a href="/logout/" class="btn-logout">Sair do Sistema</a>
+        </div>
+
+        <div class="grid">
+            <a href="/atendimento/" class="card">
+                <span class="icon">🩺</span>
+                <h3>Nova Consulta</h3>
+                <p>Atender um paciente agora</p>
+            </a>
+
+            <a href="/admin/core/paciente/add/" class="card" target="_blank">
+                <span class="icon">👤</span>
+                <h3>Cadastrar Paciente</h3>
+                <p>Adicionar novo registro</p>
+            </a>
+
+            <a href="/admin/core/consulta/" class="card" target="_blank">
+                <span class="icon">📂</span>
+                <h3>Histórico de Consultas</h3>
+                <p>Ver atendimentos anteriores</p>
+            </a>
+        </div>
+    </div>
+</body>
+</html>
