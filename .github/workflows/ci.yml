@@ -32,7 +32,7 @@ jobs:
         run: python manage.py check --deploy
 
       - name: Makemigrations check
-        run: python manage.py makemigrations --check --dry-run
+        run: python manage.py makemigrations --check --dry-run --noinput --verbosity 2
 
       - name: Migrate
         run: python manage.py migrate
