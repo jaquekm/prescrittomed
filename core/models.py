@@ -28,7 +28,6 @@ class Hospital(models.Model):
     # Novos campos de customização
     logo = models.ImageField(upload_to='logos_hospitais/', null=True, blank=True)
     cor_primaria = models.CharField(max_length=7, default='#2c3e50', help_text="Código Hex da cor (ex: #000000)")
-    data_criacao = models.DateTimeField(auto_now_add=True)
     
     # O Administrador da conta desse hospital
     admin_responsavel = models.ForeignKey(
