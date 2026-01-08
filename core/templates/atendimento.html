@@ -11,6 +11,7 @@
         
         /* Lado Esquerdo: Chat e IA */
         .panel-ia { background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #dee2e6; }
+        .banner-ia { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 15px; }
         .ia-response { background: #e8f4f8; padding: 15px; border-radius: 5px; font-size: 14px; color: #2c3e50; margin-bottom: 20px; white-space: pre-wrap; }
         
         /* Lado Direito: Papel da Receita (Editável) */
@@ -38,10 +39,15 @@
         button { cursor: pointer; padding: 10px 20px; border-radius: 5px; border: none; font-weight: bold; }
         .btn-blue { background: #3498db; color: white; width: 100%; }
         .btn-green { background: #27ae60; color: white; }
+        .btn-red { background: #c0392b; color: white; }
         .btn-print { background: #7f8c8d; color: white; text-decoration: none; padding: 10px 20px; border-radius: 5px; display: inline-block; }
         
         label { font-weight: bold; display: block; margin-bottom: 5px; }
         .input-std { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 15px; }
+        .modal-backdrop { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); align-items: center; justify-content: center; }
+        .modal { background: #fff; padding: 20px; border-radius: 8px; width: 420px; max-width: 90%; }
+        .modal h4 { margin-top: 0; }
+        .modal-actions { text-align: right; margin-top: 15px; }
     </style>
 </head>
 <body>
@@ -73,6 +79,9 @@
             
             <div class="panel-ia">
                 <h3>🤖 Auxiliar Clínico</h3>
+                <div class="banner-ia">
+                    Rascunho gerado por IA (apoio). Não substitui julgamento clínico. Revise antes de salvar/assinar.
+                </div>
                 <div class="ia-response">
                     <strong>Análise Sugerida:</strong><br>
                     {{ analise_tecnica }}
@@ -106,6 +115,7 @@
                         </span>
                         <button type="submit" class="btn-green">💾 1. Salvar Alterações</button>
                         <a href="{% url 'gerar_receita' consulta_id %}" target="_blank" class="btn-print">🖨️ 2. Imprimir Oficial</a>
+                        <button type="button" class="btn-red" onclick="abrirModalAssinatura()">✅ 3. Finalizar/Assinar</button>
                     </div>
                 </form>
             </div>
@@ -113,5 +123,33 @@
         </div>
         {% endif %}
     </div>
+
+    <div class="modal-backdrop" id="modal-assinatura">
+        <div class="modal">
+            <h4>Confirmação obrigatória</h4>
+            <form method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="acao" value="finalizar_receita">
+                <input type="hidden" name="consulta_id" value="{{ consulta_id }}">
+                <label><input type="checkbox" name="confirmacao_1" required> Revisei alergias e contraindicações relevantes.</label>
+                <label><input type="checkbox" name="confirmacao_2" required> Revisei dose, via, frequência e duração.</label>
+                <label><input type="checkbox" name="confirmacao_3" required> Revisei interações e ajustes (renal/hepático/gestação) quando aplicável.</label>
+                <label><input type="checkbox" name="confirmacao_4" required> Confirmo que o texto ao paciente está adequado e sem ambiguidades.</label>
+                <div class="modal-actions">
+                    <button type="button" onclick="fecharModalAssinatura()">Cancelar</button>
+                    <button type="submit" class="btn-red">Assinar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function abrirModalAssinatura() {
+            document.getElementById('modal-assinatura').style.display = 'flex';
+        }
+        function fecharModalAssinatura() {
+            document.getElementById('modal-assinatura').style.display = 'none';
+        }
+    </script>
 </body>
 </html>

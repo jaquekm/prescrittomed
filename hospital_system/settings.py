@@ -1,26 +1,24 @@
 import os
 from pathlib import Path
+
 import dj_database_url
+from decouple import Csv, config
 
 # Caminho base do projeto
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # --- SEGURANÇA E CONFIGURAÇÃO ---
 # Pega a chave do servidor (Railway) ou usa uma falsa se estiver no seu PC
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-chave-local-teste-123')
+SECRET_KEY = config('SECRET_KEY')
 
 # Se estiver no servidor (Railway), o DEBUG fica Falso. No seu PC, fica True.
-DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+DEBUG = config('DEBUG', default=False, cast=bool)
 
 # Permite que o Railway e seu domínio acessem o site
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=Csv())
 
 # Confiança para o Login funcionar no domínio real
-CSRF_TRUSTED_ORIGINS = [
-    'https://prescrittomed.com.br',
-    'https://www.prescrittomed.com.br',
-    'https://*.railway.app' 
-]
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -84,7 +82,7 @@ USE_I18N = True
 USE_TZ = True
 
 # --- ARQUIVOS ESTÁTICOS (CORRIGIDO PARA O RAILWAY) ---
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
@@ -96,3 +94,37 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/dashboard/'
 LOGOUT_REDIRECT_URL = '/login/'
+
+AUTH_USER_MODEL = 'core.Usuario'
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "%(levelname)s %(asctime)s %(name)s %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+        },
+        "file": {
+            "class": "logging.FileHandler",
+            "filename": os.path.join(BASE_DIR, "django.log"),
+            "formatter": "standard",
+        },
+    },
+    "loggers": {
+        "django.request": {
+            "handlers": ["console", "file"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+    },
+    "root": {
+        "handlers": ["console", "file"],
+        "level": "INFO",
+    },
+}

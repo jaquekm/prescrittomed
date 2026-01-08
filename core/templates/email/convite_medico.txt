@@ -1,0 +1,8 @@
+Olá {{ user.username }},
+
+Você foi convidado para acessar o PrescrittoMED.
+
+Defina sua senha no link abaixo (válido por tempo limitado):
+{{ link }}
+
+Se você não esperava este convite, ignore esta mensagem.
