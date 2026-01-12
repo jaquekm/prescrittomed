@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Pacientes - PrescrittoMED{% endblock %}
+
+{% block content %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="fw-bold">Pacientes</h1>
+            <p class="text-muted mb-0">Lista longitudinal de pacientes do hospital.</p>
+        </div>
+        <a class="btn btn-primary" href="{% url 'paciente_criar' %}">Novo paciente</a>
+    </div>
+
+    <form method="GET" class="app-form mb-3">
+        <div class="input-group">
+            <input type="text" name="busca" class="form-control" placeholder="Buscar por nome ou CPF" value="{{ busca }}">
+            <button class="btn btn-outline-secondary" type="submit">Buscar</button>
+        </div>
+    </form>
+
+    {% if pacientes %}
+        <div class="card app-card">
+            <div class="app-card-body">
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Paciente</th>
+                                <th>CPF</th>
+                                <th>Responsável</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for paciente in pacientes %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ paciente.nome_completo }}</strong><br>
+                                        <span class="text-muted small">{{ paciente.data_nascimento|date:"d/m/Y" }}</span>
+                                    </td>
+                                    <td>{{ paciente.cpf }}</td>
+                                    <td>{{ paciente.medico_responsavel|default:"-" }}</td>
+                                    <td class="text-end">
+                                        <a class="btn btn-sm btn-outline-primary" href="{% url 'paciente_detalhe' paciente.id %}">Ver detalhes</a>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        {% include "partials/_empty_state.html" with icon="🧑‍⚕️" title="Nenhum paciente encontrado" description="Cadastre o primeiro paciente para iniciar o histórico." cta_url=cta_url cta_label="Cadastrar paciente" %}
+    {% endif %}
+{% endblock %}

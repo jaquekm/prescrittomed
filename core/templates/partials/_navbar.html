@@ -1,0 +1,22 @@
+<nav class="navbar navbar-expand-lg bg-white border-bottom shadow-sm app-navbar">
+    <div class="container-fluid">
+        <button class="btn btn-outline-secondary d-lg-none me-2" type="button" id="sidebarToggle" aria-label="Abrir menu">
+            ☰
+        </button>
+        <a class="navbar-brand fw-semibold d-flex align-items-center gap-2" href="{% url 'dashboard' %}">
+            {% if user.hospital and user.hospital.logo %}
+                <img src="{{ user.hospital.logo.url }}" alt="{{ user.hospital.nome }}" style="height: 28px;">
+            {% endif %}
+            <span>PrescrittoMED</span>
+        </a>
+        <div class="d-flex align-items-center gap-3">
+            <div class="text-end d-none d-md-block">
+                <div class="fw-semibold">Dr(a). {{ user.username }}</div>
+                {% if user.hospital %}
+                    <small class="text-muted">{{ user.hospital.nome }}</small>
+                {% endif %}
+            </div>
+            <a class="btn btn-outline-danger btn-sm" href="{% url 'logout' %}">Sair</a>
+        </div>
+    </div>
+</nav>

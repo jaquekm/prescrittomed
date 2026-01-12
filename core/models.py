@@ -56,6 +56,7 @@ class Usuario(AbstractUser):
         null=True,
         blank=True,
     )
+    pode_ver_todos_pacientes = models.BooleanField(default=False)
 
     class Meta:
         constraints = [
@@ -81,6 +82,13 @@ class PerfilMedico(models.Model):
 # 3. O PACIENTE
 class Paciente(models.Model):
     hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE) # Paciente é do hospital, não do médico
+    medico_responsavel = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pacientes_responsaveis",
+    )
     nome_completo = models.CharField(max_length=100)
     data_nascimento = models.DateField()
     cpf = models.CharField(max_length=14)
@@ -101,6 +109,19 @@ class Paciente(models.Model):
 
 # 4. A CONSULTA (Ligada ao histórico)
 class Consulta(models.Model):
+    STATUS_EM_ANDAMENTO = "EM_ANDAMENTO"
+    STATUS_RASCUNHO_SALVO = "RASCUNHO_SALVO"
+    STATUS_EM_REVISAO = "EM_REVISAO"
+    STATUS_ASSINADA = "ASSINADA"
+    STATUS_ARQUIVADA = "ARQUIVADA"
+    STATUS_CHOICES = (
+        (STATUS_EM_ANDAMENTO, "Em andamento"),
+        (STATUS_RASCUNHO_SALVO, "Rascunho salvo"),
+        (STATUS_EM_REVISAO, "Em revisão"),
+        (STATUS_ASSINADA, "Assinada"),
+        (STATUS_ARQUIVADA, "Arquivada"),
+    )
+
     paciente = models.ForeignKey(Paciente, on_delete=models.CASCADE)
     medico = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE)
@@ -108,6 +129,8 @@ class Consulta(models.Model):
     sintomas = models.TextField() # Histórico do Chat
     analise_ia = models.TextField(null=True, blank=True) # Parte técnica
     prescricao = models.TextField(null=True, blank=True) # Receita final editada
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_EM_ANDAMENTO)
+    chat_messages = models.JSONField(default=list, blank=True)
     
     def __str__(self):
         return f"{self.paciente.nome_completo} - {self.data}"
@@ -262,6 +285,50 @@ class BulaAccessLog(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     objects = HospitalScopedManager()
+
+    class Meta:
+        indexes = [models.Index(fields=["hospital"])]
+
+
+class HospitalConfig(models.Model):
+    hospital = models.OneToOneField(Hospital, on_delete=models.CASCADE)
+    dominios_permitidos = models.TextField(blank=True)
+    modo_privacidade = models.BooleanField(default=False)
+    retencao_dados_dias = models.PositiveIntegerField(default=365)
+    assinatura_rodape = models.TextField(blank=True)
+    estilo_orientacao = models.TextField(blank=True)
+    defaults_orientacao = models.TextField(blank=True)
+
+    objects = HospitalScopedManager()
+
+    def __str__(self):
+        return f"Config {self.hospital.nome}"
+
+    class Meta:
+        indexes = [models.Index(fields=["hospital"])]
+
+
+class MedicoInvite(models.Model):
+    STATUS_PENDENTE = "PENDENTE"
+    STATUS_ACEITO = "ACEITO"
+    STATUS_EXPIRADO = "EXPIRADO"
+    STATUS_CHOICES = (
+        (STATUS_PENDENTE, "Pendente"),
+        (STATUS_ACEITO, "Aceito"),
+        (STATUS_EXPIRADO, "Expirado"),
+    )
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDENTE)
+    token = models.CharField(max_length=255)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = HospitalScopedManager()
+
+    def __str__(self):
+        return f"Convite {self.user.email} ({self.status})"
 
     class Meta:
         indexes = [models.Index(fields=["hospital"])]

@@ -1,0 +1,146 @@
+:root {
+    --brand-primary: #1f3b5d;
+    --brand-accent: #2f7bf6;
+    --brand-soft: #f4f7fb;
+    --brand-border: #e5eaf1;
+    --brand-radius: 14px;
+}
+
+body {
+    background-color: var(--brand-soft);
+    color: #1f2a37;
+}
+
+.app-shell {
+    min-height: 100vh;
+}
+
+.app-navbar {
+    position: sticky;
+    top: 0;
+    z-index: 1040;
+}
+
+.app-layout {
+    display: flex;
+    min-height: calc(100vh - 64px);
+}
+
+.app-sidebar {
+    width: 240px;
+    background: #fff;
+    border-right: 1px solid var(--brand-border);
+    padding: 24px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    transition: transform 0.2s ease-in-out;
+}
+
+.app-sidebar__link {
+    display: block;
+    padding: 10px 12px;
+    border-radius: 10px;
+    color: #1f2a37;
+    text-decoration: none;
+    margin-bottom: 4px;
+}
+
+.app-sidebar__link:hover,
+.app-sidebar__link:focus {
+    background: var(--brand-soft);
+    color: var(--brand-primary);
+}
+
+.app-content {
+    flex: 1;
+    padding: 28px;
+}
+
+.app-card {
+    border: 1px solid var(--brand-border);
+    border-radius: var(--brand-radius);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.app-card-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--brand-border);
+    background: #fff;
+    border-top-left-radius: var(--brand-radius);
+    border-top-right-radius: var(--brand-radius);
+}
+
+.app-card-body {
+    padding: 24px;
+    background: #fff;
+    border-bottom-left-radius: var(--brand-radius);
+    border-bottom-right-radius: var(--brand-radius);
+}
+
+.app-form input,
+.app-form select,
+.app-form textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--brand-border);
+    background: #fff;
+}
+
+.app-form input:focus,
+.app-form select:focus,
+.app-form textarea:focus {
+    outline: none;
+    border-color: var(--brand-accent);
+    box-shadow: 0 0 0 0.2rem rgba(47, 123, 246, 0.15);
+}
+
+.app-alerts {
+    margin-bottom: 16px;
+}
+
+.auth-page {
+    background: linear-gradient(135deg, #1f3b5d, #2f7bf6);
+}
+
+.auth-page .app-content {
+    padding: 0;
+}
+
+.auth-card {
+    max-width: 420px;
+    margin: 80px auto;
+    background: #fff;
+    border-radius: var(--brand-radius);
+    padding: 32px;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.25);
+}
+
+.print-page {
+    background: #fff;
+}
+
+.print-page .app-content {
+    padding: 0;
+}
+
+@media (max-width: 991px) {
+    .app-layout {
+        position: relative;
+    }
+
+    .app-sidebar {
+        position: fixed;
+        top: 64px;
+        left: 0;
+        bottom: 0;
+        transform: translateX(-100%);
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.2);
+        z-index: 1030;
+    }
+
+    body.sidebar-open .app-sidebar {
+        transform: translateX(0);
+    }
+}

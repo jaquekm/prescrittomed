@@ -1,52 +1,75 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <title>Painel Médico - Agente Prescritto</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; padding: 20px; }
-        .container { max-width: 1000px; margin: 0 auto; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
-        .welcome { color: #2c3e50; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
-        
-        .card { background: white; padding: 30px; border-radius: 10px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: 0.3s; text-decoration: none; color: #34495e; }
-        .card:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); }
-        .card h3 { margin: 10px 0 0; color: #2c3e50; }
-        .icon { font-size: 40px; margin-bottom: 10px; display: block; }
-        
-        .btn-logout { background-color: #e74c3c; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <div class="welcome">
-                <h1>Olá, Dr(a). {{ user.username }}</h1>
-                <p>Hospital Santa Clara</p>
-            </div>
-            <a href="/logout/" class="btn-logout">Sair do Sistema</a>
-        </div>
+{% extends "base.html" %}
 
-        <div class="grid">
-            <a href="/atendimento/" class="card">
-                <span class="icon">🩺</span>
-                <h3>Nova Consulta</h3>
-                <p>Atender um paciente agora</p>
-            </a>
+{% block title %}Dashboard - PrescrittoMED{% endblock %}
 
-            <a href="/admin/core/paciente/add/" class="card" target="_blank">
-                <span class="icon">👤</span>
-                <h3>Cadastrar Paciente</h3>
-                <p>Adicionar novo registro</p>
-            </a>
-
-            <a href="/admin/core/consulta/" class="card" target="_blank">
-                <span class="icon">📂</span>
-                <h3>Histórico de Consultas</h3>
-                <p>Ver atendimentos anteriores</p>
-            </a>
-        </div>
+{% block content %}
+    <div class="mb-4">
+        <h1 class="fw-bold">Olá, Dr(a). {{ user.username }}</h1>
+        {% if user.hospital %}
+            <p class="text-muted mb-0">{{ user.hospital.nome }}</p>
+        {% endif %}
     </div>
-</body>
-</html>
+
+    <div class="row g-4">
+        <div class="col-md-6 col-xl-4">
+            <a href="{% url 'atendimento' %}" class="text-decoration-none">
+                <div class="card app-card h-100">
+                    <div class="card-body text-center">
+                        <div class="display-5">🩺</div>
+                        <h3 class="h5 mt-3">Nova consulta</h3>
+                        <p class="text-muted mb-0">Atender um paciente agora</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-md-6 col-xl-4">
+            <a href="/admin/core/paciente/add/" class="text-decoration-none" target="_blank">
+                <div class="card app-card h-100">
+                    <div class="card-body text-center">
+                        <div class="display-5">👤</div>
+                        <h3 class="h5 mt-3">Cadastrar paciente</h3>
+                        <p class="text-muted mb-0">Adicionar novo registro</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-md-6 col-xl-4">
+            <a href="{% url 'pacientes_lista' %}" class="text-decoration-none">
+                <div class="card app-card h-100">
+                    <div class="card-body text-center">
+                        <div class="display-5">📂</div>
+                        <h3 class="h5 mt-3">Histórico de pacientes</h3>
+                        <p class="text-muted mb-0">Linha do tempo de consultas</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        {% if user.tipo == "ADMIN" or user.tipo == "GESTOR" %}
+            <div class="col-md-6 col-xl-4">
+                <a href="{% url 'convites_lista' %}" class="text-decoration-none">
+                    <div class="card app-card h-100">
+                        <div class="card-body text-center">
+                            <div class="display-5">✉️</div>
+                            <h3 class="h5 mt-3">Convites</h3>
+                            <p class="text-muted mb-0">Acompanhar médicos convidados</p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-md-6 col-xl-4">
+                <a href="{% url 'hospital_settings' %}" class="text-decoration-none">
+                    <div class="card app-card h-100">
+                        <div class="card-body text-center">
+                            <div class="display-5">🏥</div>
+                            <h3 class="h5 mt-3">Configurações</h3>
+                            <p class="text-muted mb-0">Branding e políticas do hospital</p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}

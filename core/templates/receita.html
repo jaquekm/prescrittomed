@@ -1,40 +1,34 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <title>Receita - {{ consulta.paciente.nome_completo }}</title>
+{% extends "base.html" %}
+
+{% block title %}Receita - {{ consulta.paciente.nome_completo }}{% endblock %}
+{% block body_class %}print-page{% endblock %}
+{% block navbar %}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block extra_head %}
     <style>
-        body { margin: 0; padding: 0; font-family: 'Arial', sans-serif; color: #000; }
         .page { width: 21cm; min-height: 29.7cm; padding: 2cm; margin: 0 auto; box-sizing: border-box; }
-        
-        /* Cabeçalho */
         .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #000; padding-bottom: 20px; }
         .hosp-name { font-size: 22px; font-weight: bold; text-transform: uppercase; }
         .hosp-sub { font-size: 14px; margin-top: 5px; }
-        
-        /* Identificação */
         .paciente-box { margin-bottom: 30px; font-size: 16px; font-weight: bold; }
         .nome-paciente { font-size: 18px; text-decoration: underline; margin-left: 10px; }
-        
-        /* Corpo da Receita */
         .conteudo-receita { font-family: 'Courier New', Courier, monospace; font-size: 16px; line-height: 1.8; min-height: 500px; white-space: pre-wrap; }
-        
-        /* Rodapé */
         .footer { margin-top: 50px; text-align: center; }
         .data-local { margin-bottom: 60px; font-size: 14px; }
         .assinatura-line { border-top: 1px solid #000; width: 50%; margin: 0 auto; margin-bottom: 10px; }
         .medico-nome { font-weight: bold; font-size: 16px; }
-        
+
         @media print {
-            .no-print { display: none; }
-            body { background: white; }
+            .no-print { display: none !important; }
             .page { width: 100%; margin: 0; padding: 0; }
         }
     </style>
-</head>
-<body>
-    <div class="no-print" style="background: #eee; padding: 10px; text-align: center; border-bottom: 1px solid #ccc;">
-        <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; cursor: pointer;">🖨️ Imprimir Agora</button>
+{% endblock %}
+
+{% block content %}
+    <div class="no-print bg-light py-3 border-bottom text-center">
+        <button onclick="window.print()" class="btn btn-secondary">🖨️ Imprimir agora</button>
     </div>
 
     <div class="page">
@@ -42,6 +36,9 @@
             <div class="hosp-name">{{ consulta.paciente.hospital.nome }}</div>
             <div class="hosp-sub">{{ consulta.paciente.hospital.endereco }}</div>
             <div class="hosp-sub">CNPJ: {{ consulta.paciente.hospital.cnpj }}</div>
+            {% if receita %}
+                <div class="hosp-sub">Versão {{ receita.version }}</div>
+            {% endif %}
         </div>
 
         <div class="paciente-box">
@@ -51,19 +48,21 @@
         <div class="conteudo-receita">
             {{ consulta.prescricao }}
         </div>
-        <div style="margin-top: 20px; font-size: 12px; color: #555;">
-            Conteúdo de apoio. Não substitui bula/protocolos e orientação profissional.
+        <div class="mt-4 text-muted" style="font-size: 12px;">
+            {% if config and config.assinatura_rodape %}
+                <div>{{ config.assinatura_rodape }}</div>
+            {% endif %}
+            <div>Conteúdo de apoio. Não substitui bula/protocolos e orientação profissional.</div>
         </div>
 
         <div class="footer">
             <div class="data-local">
                 {{ consulta.paciente.hospital.endereco|truncatewords:2 }}, {{ consulta.data|date:"d \d\e F \d\e Y" }}.
             </div>
-            
+
             <div class="assinatura-line"></div>
             <div class="medico-nome">Dr(a). {{ consulta.medico.username }}</div>
             <div>CRM: {{ consulta.medico.crm|default:"____________" }}</div>
         </div>
     </div>
-</body>
-</html>
+{% endblock %}

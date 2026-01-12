@@ -1,55 +1,35 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <title>Meu Perfil</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #eef2f5; padding: 20px; }
-        .box { max-width: 600px; margin: 40px auto; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h1 { text-align: center; color: #2c3e50; }
-        
-        .preview-img { display: block; margin: 20px auto; max-width: 200px; border: 1px dashed #ccc; padding: 5px; }
-        
-        label { font-weight: bold; display: block; margin-top: 15px; }
-        input[type="text"], select { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-        
-        button { width: 100%; margin-top: 30px; padding: 12px; background: #27ae60; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
-        button:hover { background: #219150; }
-        
-        .alert { padding: 15px; background: #d4edda; color: #155724; border-radius: 4px; margin-bottom: 20px; text-align: center; }
-    </style>
-</head>
-<body>
-    <div class="box">
-        <a href="{% url 'dashboard' %}" style="text-decoration: none; color: #555;">⬅ Voltar</a>
-        
-        <h1>Meus Dados Profissionais</h1>
-        <p style="text-align: center; color: #666;">Esses dados aparecerão automaticamente nas suas receitas.</p>
+{% extends "base.html" %}
 
-        {% if messages %}
-            {% for message in messages %}
-                <div class="alert">{{ message }}</div>
-            {% endfor %}
-        {% endif %}
+{% block title %}Meu Perfil - PrescrittoMED{% endblock %}
 
-        <form method="POST" enctype="multipart/form-data">
-            {% csrf_token %}
-            
-            <label>CRM:</label>
-            {{ form.crm }}
-            
-            <label>Estado (UF):</label>
-            {{ form.uf_crm }}
-
-            <label>Assinatura Digitalizada:</label>
-            {% if perfil.assinatura_img %}
-                <img src="{{ perfil.assinatura_img.url }}" class="preview-img">
-                <p style="text-align: center; font-size: 12px;">Assinatura Atual 👆</p>
-            {% endif %}
-            {{ form.assinatura_img }}
-
-            <button type="submit">💾 Salvar Alterações</button>
-        </form>
+{% block content %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="fw-bold">Meus dados profissionais</h1>
+            <p class="text-muted mb-0">Esses dados aparecem automaticamente nas receitas.</p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Voltar ao painel</a>
     </div>
-</body>
-</html>
+
+    <div class="card app-card">
+        <div class="app-card-body">
+            <form method="POST" enctype="multipart/form-data" class="app-form">
+                {% csrf_token %}
+                {% include "partials/_form_fields.html" with form=form %}
+
+                <div class="mb-3">
+                    <label class="form-label">Assinatura digitalizada</label>
+                    {% if perfil.assinatura_img %}
+                        <div class="mb-2">
+                            <img src="{{ perfil.assinatura_img.url }}" class="img-thumbnail" alt="Assinatura atual" style="max-width: 220px;">
+                        </div>
+                        <p class="text-muted small">Assinatura atual 👆</p>
+                    {% endif %}
+                    {{ form.assinatura_img }}
+                </div>
+
+                <button type="submit" class="btn btn-success">💾 Salvar alterações</button>
+            </form>
+        </div>
+    </div>
+{% endblock %}

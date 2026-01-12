@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Convites - PrescrittoMED{% endblock %}
+
+{% block content %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="fw-bold">Convites</h1>
+            <p class="text-muted mb-0">Acompanhe convites pendentes, aceitos e expirados.</p>
+        </div>
+        <a class="btn btn-primary" href="{% url 'convidar_medico' %}">Novo convite</a>
+    </div>
+
+    <div class="card app-card">
+        <div class="app-card-body">
+            {% if invites %}
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Médico</th>
+                                <th>Status</th>
+                                <th>Expira em</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for invite in invites %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ invite.user.username }}</strong><br>
+                                        <span class="text-muted small">{{ invite.user.email }}</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge {% if invite.status == 'ACEITO' %}text-bg-success{% elif invite.status == 'EXPIRADO' %}text-bg-secondary{% else %}text-bg-warning{% endif %}">
+                                            {{ invite.get_status_display }}
+                                        </span>
+                                    </td>
+                                    <td>{{ invite.expires_at|date:"d/m/Y H:i" }}</td>
+                                    <td class="text-end">
+                                        <a class="btn btn-sm btn-outline-secondary" href="{% url 'reenviar_convite' invite.id %}">Reenviar</a>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                {% include "partials/_empty_state.html" with icon="✉️" title="Sem convites" description="Envie o primeiro convite para liberar acessos." cta_url=cta_url cta_label="Convidar médico" %}
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

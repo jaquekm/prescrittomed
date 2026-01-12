@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}Cadastro do Hospital - PrescrittoMED{% endblock %}
+{% block body_class %}auth-page{% endblock %}
+{% block navbar %}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+    <div class="auth-card" style="max-width: 640px;">
+        <h2 class="fw-bold mb-3">Cadastro do hospital</h2>
+        <p class="text-muted">Crie sua conta administrativa para iniciar o tenant.</p>
+        <form method="POST" enctype="multipart/form-data" class="app-form">
+            {% csrf_token %}
+            {% include "partials/_form_fields.html" with form=form %}
+            <button type="submit" class="btn btn-primary w-100">Criar hospital</button>
+        </form>
+        <div class="text-center mt-3">
+            <a href="{% url 'login' %}" class="text-decoration-none">Já tenho conta</a>
+        </div>
+    </div>
+{% endblock %}

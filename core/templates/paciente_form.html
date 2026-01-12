@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}{{ titulo }} - PrescrittoMED{% endblock %}
+
+{% block content %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="fw-bold">{{ titulo }}</h1>
+            <p class="text-muted mb-0">Preencha os dados básicos do paciente.</p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{% url 'pacientes_lista' %}">Voltar</a>
+    </div>
+
+    <div class="card app-card">
+        <div class="app-card-body">
+            <form method="POST" class="app-form">
+                {% csrf_token %}
+                {% include "partials/_form_fields.html" with form=form %}
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-success">Salvar</button>
+                    <a class="btn btn-outline-secondary" href="{% url 'pacientes_lista' %}">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}
