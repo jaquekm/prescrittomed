@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}Config IA - PrescrittoMED{% endblock %}
+
+{% block content %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="fw-bold">Configuração de IA</h1>
+            <p class="text-muted mb-0">Templates, biblioteca aprovada e feedback por hospital.</p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Voltar ao painel</a>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card app-card">
+                <div class="app-card-header">
+                    <h5 class="mb-1">Prompt template ativo</h5>
+                    <p class="text-muted mb-0">Atualize o comportamento padrão da IA.</p>
+                </div>
+                <div class="app-card-body">
+                    {% if prompt %}
+                        <p class="text-muted small">Versão ativa: {{ prompt.versao }}</p>
+                    {% endif %}
+                    <form method="POST" class="app-form">
+                        {% csrf_token %}
+                        {% include "partials/_form_fields.html" with form=form %}
+                        <button type="submit" class="btn btn-success">Salvar template</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card app-card">
+                <div class="app-card-header">
+                    <h5 class="mb-1">Biblioteca aprovada</h5>
+                    <p class="text-muted mb-0">Blocos de orientação validados pelo hospital.</p>
+                </div>
+                <div class="app-card-body">
+                    <form method="POST" class="app-form mb-3">
+                        {% csrf_token %}
+                        <input type="hidden" name="acao" value="novo_conhecimento">
+                        {% include "partials/_form_fields.html" with form=conhecimento_form %}
+                        <button type="submit" class="btn btn-outline-primary">Adicionar item</button>
+                    </form>
+                    {% if conhecimento %}
+                        <ul class="list-group list-group-flush">
+                            {% for item in conhecimento %}
+                                <li class="list-group-item">
+                                    <div class="small text-muted">{{ item.tipo }}</div>
+                                    {{ item.texto }}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="text-muted">Nenhum item aprovado ainda.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card app-card mt-4">
+        <div class="app-card-header">
+            <h5 class="mb-1">Feedback de IA</h5>
+            <p class="text-muted mb-0">Sinais coletados por médicos.</p>
+        </div>
+        <div class="app-card-body">
+            {% if feedbacks %}
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Médico</th>
+                                <th>Rating</th>
+                                <th>Motivo</th>
+                                <th>Data</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for feedback in feedbacks %}
+                                <tr>
+                                    <td>{{ feedback.medico.username }}</td>
+                                    <td>{{ feedback.rating }}</td>
+                                    <td>{{ feedback.motivo|default:"-" }}</td>
+                                    <td>{{ feedback.created_at|date:"d/m/Y H:i" }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-muted">Nenhum feedback registrado.</p>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

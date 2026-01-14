@@ -1,0 +1,19 @@
+{% if messages %}
+    <div class="app-alerts">
+        {% for message in messages %}
+            {% if message.tags == "error" %}
+                {% with level="danger" %}
+                    <div class="alert alert-{{ level }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+                    </div>
+                {% endwith %}
+            {% else %}
+                <div class="alert alert-{% if message.tags %}{{ message.tags }}{% else %}info{% endif %} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+                </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+{% endif %}

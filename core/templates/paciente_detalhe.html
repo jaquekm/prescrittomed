@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}Paciente - {{ paciente.nome_completo }}{% endblock %}
+
+{% block content %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="fw-bold">{{ paciente.nome_completo }}</h1>
+            <p class="text-muted mb-0">CPF: {{ paciente.cpf }} · Nascimento: {{ paciente.data_nascimento }}</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary" href="{% url 'pacientes_lista' %}">Voltar</a>
+            <a class="btn btn-outline-primary" href="{% url 'paciente_editar' paciente.id %}">Editar</a>
+            <a class="btn btn-primary" href="{% url 'atendimento' %}?paciente={{ paciente.id }}">Nova consulta</a>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-4">
+            <div class="card app-card">
+                <div class="app-card-header">
+                    <h5 class="mb-1">Dados básicos</h5>
+                </div>
+                <div class="app-card-body">
+                    <p><strong>Hospital:</strong> {{ paciente.hospital.nome }}</p>
+                    <p><strong>Alergias:</strong> {{ paciente.historico_alergias|default:"-" }}</p>
+                    <p><strong>Médico responsável:</strong> {{ paciente.medico_responsavel|default:"-" }}</p>
+                </div>
+            </div>
+
+            <div class="card app-card mt-4">
+                <div class="app-card-header">
+                    <h5 class="mb-1">Alertas clínicos</h5>
+                </div>
+                <div class="app-card-body">
+                    <p class="mb-0"><strong>Alergias:</strong> {{ paciente.historico_alergias|default:"Nenhuma alergia registrada." }}</p>
+                </div>
+            </div>
+
+            <div class="card app-card mt-4">
+                <div class="app-card-header">
+                    <h5 class="mb-1">Observações clínicas</h5>
+                </div>
+                <div class="app-card-body">
+                    <form method="POST" class="app-form">
+                        {% csrf_token %}
+                        {% include "partials/_form_fields.html" with form=form %}
+                        <button type="submit" class="btn btn-outline-primary">Salvar observação</button>
+                    </form>
+                    {% if observacoes %}
+                        <ul class="list-group list-group-flush mt-3">
+                            {% for obs in observacoes %}
+                                <li class="list-group-item">
+                                    <div class="small text-muted">{{ obs.created_at }}</div>
+                                    {{ obs.texto }}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="text-muted mt-3">Nenhuma observação registrada.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8">
+            <div class="card app-card mb-4">
+                <div class="app-card-header">
+                    <h5 class="mb-1">Histórico de consultas</h5>
+                </div>
+                <div class="app-card-body">
+                    {% if consultas %}
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Data</th>
+                                        <th>Médico</th>
+                                        <th>Status</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for consulta in consultas %}
+                                        <tr>
+                                            <td>{{ consulta.data|date:"d/m/Y H:i" }}</td>
+                                            <td>{{ consulta.medico.username }}</td>
+                                            <td>{{ consulta.get_status_display }}</td>
+                                            <td class="text-end">
+                                                <a class="btn btn-sm btn-outline-secondary" href="{% url 'revisar_receita' consulta.id %}">Ver receita</a>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted">Nenhuma consulta registrada.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card app-card">
+                <div class="app-card-header">
+                    <h5 class="mb-1">Receitas emitidas</h5>
+                </div>
+                <div class="app-card-body">
+                    {% if receitas %}
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Consulta</th>
+                                        <th>Versão</th>
+                                        <th>Status</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for receita in receitas %}
+                                        <tr>
+                                            <td>#{{ receita.consulta_id }}</td>
+                                            <td>v{{ receita.version }}</td>
+                                            <td>{{ receita.get_status_display }}</td>
+                                            <td class="text-end">
+                                                <a class="btn btn-sm btn-outline-secondary" href="{% url 'gerar_receita' receita.consulta_id %}" target="_blank">Imprimir</a>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted">Nenhuma receita registrada.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

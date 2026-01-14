@@ -1,0 +1,19 @@
+<aside class="app-sidebar">
+    <div class="app-sidebar__section">
+        <div class="text-uppercase text-muted small fw-semibold mb-2">Menu</div>
+        <a class="app-sidebar__link" href="{% url 'dashboard' %}">Dashboard</a>
+        <a class="app-sidebar__link" href="{% url 'atendimento' %}">Atendimento</a>
+        <a class="app-sidebar__link" href="{% url 'pacientes_lista' %}">Pacientes</a>
+        <a class="app-sidebar__link" href="{% url 'perfil_medico' %}">Meu Perfil</a>
+        {% if user.tipo == 'GESTOR' or user.tipo == 'ADMIN' %}
+            <a class="app-sidebar__link" href="{% url 'gestao_hospital' %}">Gestão</a>
+            <a class="app-sidebar__link" href="{% url 'convites_lista' %}">Convites</a>
+            <a class="app-sidebar__link" href="{% url 'hospital_settings' %}">Config. Hospital</a>
+            <a class="app-sidebar__link" href="{% url 'ia_config' %}">Config. IA</a>
+        {% endif %}
+    </div>
+    <div class="app-sidebar__section mt-auto">
+        <div class="text-uppercase text-muted small fw-semibold mb-2">Acessos rápidos</div>
+        <a class="app-sidebar__link" href="/admin/" target="_blank">Admin Django</a>
+    </div>
+</aside>

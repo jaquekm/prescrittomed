@@ -1,0 +1,10 @@
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center p-5">
+        <div class="display-6 mb-3">{{ icon|default:"📭" }}</div>
+        <h5 class="mb-2">{{ title|default:"Nada por aqui ainda" }}</h5>
+        <p class="text-muted mb-4">{{ description|default:"Comece criando seu primeiro registro." }}</p>
+        {% if cta_url and cta_label %}
+            <a class="btn btn-primary" href="{{ cta_url }}">{{ cta_label }}</a>
+        {% endif %}
+    </div>
+</div>

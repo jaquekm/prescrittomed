@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import SetPasswordForm
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.core.exceptions import PermissionDenied
+from django.db import models
 from django.core.mail import send_mail
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
@@ -13,9 +14,21 @@ from django.urls import reverse
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 
+from django.utils import timezone
+
 from .forms import ConviteMedicoForm, NovoMedicoForm, PerfilMedicoForm
-from .models import AiDraft, AuditLog, Consulta, Hospital, Paciente, PerfilMedico, Receita
+from .models import (
+    AiDraft,
+    AuditLog,
+    Consulta,
+    Hospital,
+    MedicoInvite,
+    Paciente,
+    PerfilMedico,
+    Receita,
+)
 from .permissions import get_user_hospital, hospital_scope_required, role_required
+from .services.bula_fetcher import BulaFetcherError, fetch_bula, summarize_bula
 from .services.openai_prescription import (
     OpenAIPrescriptionError,
     generate_prescription,
@@ -34,10 +47,14 @@ DISCLAIMER_PACIENTE = (
 def atendimento_medico(request):
     user_hospital = get_user_hospital(request.user)
     pacientes = Paciente.objects.all()
-    if request.user.tipo in ("MEDICO", "GESTOR"):
+    if request.user.tipo in ("MEDICO", "GESTOR", "ADMIN"):
         if not user_hospital:
             raise PermissionDenied
-        pacientes = Paciente.objects.for_user(request.user)
+        pacientes = Paciente.objects.filter(hospital=user_hospital)
+        if request.user.tipo == "MEDICO" and not request.user.pode_ver_todos_pacientes:
+            pacientes = pacientes.filter(
+                models.Q(medico_responsavel=request.user) | models.Q(consulta__medico=request.user)
+            ).distinct()
     
     # Variáveis iniciais
     analise_tecnica = ""
@@ -45,6 +62,10 @@ def atendimento_medico(request):
     historico_conversa = ""
     paciente_selecionado = None
     consulta_id = request.POST.get('consulta_id')
+    paciente_preselecionado = request.GET.get("paciente")
+
+    bula_resultado = None
+    bula_resumo = None
 
     if request.method == "POST":
         acao = request.POST.get('acao')
@@ -76,6 +97,7 @@ def atendimento_medico(request):
                 if not consulta.hospital_id:
                     consulta.hospital = consulta.paciente.hospital
                 consulta.prescricao = request.POST.get('receita_editavel')
+                consulta.status = Consulta.STATUS_RASCUNHO_SALVO
                 consulta.save()
                 
                 # Recarrega dados
@@ -96,13 +118,17 @@ def atendimento_medico(request):
                     request.POST.get("confirmacao_3"),
                     request.POST.get("confirmacao_4"),
                 ]
-                if not all(checks):
+                if consulta.status != Consulta.STATUS_EM_REVISAO:
+                    messages.error(request, "Finalize somente após revisar a receita.")
+                elif not all(checks):
                     messages.error(request, "Confirme todos os itens antes de assinar.")
                 else:
                     receita = consulta.receitas.order_by("-version").first()
                     if receita:
                         receita.status = Receita.STATUS_ASSINADA
                         receita.save(update_fields=["status"])
+                        consulta.status = Consulta.STATUS_ASSINADA
+                        consulta.save(update_fields=["status"])
                         AuditLog.objects.create(
                             user=request.user,
                             hospital=consulta.hospital,
@@ -145,6 +171,13 @@ def atendimento_medico(request):
                 receita_paciente = f"{receita_paciente}\n\n{DISCLAIMER_PACIENTE}"
 
                 historico_conversa = f"{conversa_atual}\nIA: rascunho estruturado gerado."
+                chat_messages = []
+                if consulta_id:
+                    chat_messages = Consulta.objects.filter(id=consulta_id).values_list("chat_messages", flat=True).first() or []
+                chat_messages = list(chat_messages) + [
+                    {"role": "user", "content": sintomas},
+                    {"role": "assistant", "content": analise_tecnica},
+                ]
 
                 # Salva no banco
                 if consulta_id:
@@ -156,6 +189,8 @@ def atendimento_medico(request):
                     consulta.sintomas = historico_conversa
                     consulta.analise_ia = analise_tecnica
                     consulta.prescricao = receita_paciente
+                    consulta.status = Consulta.STATUS_RASCUNHO_SALVO
+                    consulta.chat_messages = chat_messages
                     consulta.save()
                 else:
                     nova_consulta = Consulta.objects.create(
@@ -164,7 +199,9 @@ def atendimento_medico(request):
                         hospital=user_hospital or paciente_selecionado.hospital,
                         sintomas=historico_conversa,
                         analise_ia=analise_tecnica,
-                        prescricao=receita_paciente
+                        prescricao=receita_paciente,
+                        status=Consulta.STATUS_RASCUNHO_SALVO,
+                        chat_messages=chat_messages,
                     )
                     consulta_id = nova_consulta.id
                     consulta = nova_consulta
@@ -203,13 +240,66 @@ def atendimento_medico(request):
                 analise_tecnica = "Falha inesperada ao gerar análise."
                 receita_paciente = "Erro ao gerar. Tente novamente."
 
+        elif acao == "aplicar_rascunho":
+            if consulta_id:
+                consulta = Consulta.objects.get(id=consulta_id)
+                if request.user.tipo in ("MEDICO", "GESTOR"):
+                    if not user_hospital or consulta.paciente.hospital_id != user_hospital.id:
+                        raise PermissionDenied
+                consulta.prescricao = request.POST.get("receita_rascunho", "")
+                consulta.status = Consulta.STATUS_RASCUNHO_SALVO
+                consulta.save(update_fields=["prescricao", "status"])
+                messages.success(request, "Rascunho aplicado na receita.")
+
+        elif acao == "avancar_revisao":
+            if consulta_id:
+                consulta = Consulta.objects.get(id=consulta_id)
+                if request.user.tipo in ("MEDICO", "GESTOR"):
+                    if not user_hospital or consulta.paciente.hospital_id != user_hospital.id:
+                        raise PermissionDenied
+                consulta.status = Consulta.STATUS_EM_REVISAO
+                consulta.save(update_fields=["status"])
+                return redirect("revisar_receita", consulta_id=consulta.id)
+
+        elif acao == "buscar_bula":
+            termo_bula = request.POST.get("termo_bula", "")
+            if termo_bula:
+                try:
+                    bula_resultado = fetch_bula(termo_bula, user_hospital)
+                    if request.POST.get("gerar_resumo") == "1":
+                        bula_resumo = summarize_bula(bula_resultado.get("conteudo", ""))
+                except BulaFetcherError as exc:
+                    messages.error(request, str(exc))
+            else:
+                messages.error(request, "Informe um termo para buscar a bula.")
+        elif acao == "aplicar_bula":
+            if consulta_id:
+                consulta = Consulta.objects.get(id=consulta_id)
+                if request.user.tipo in ("MEDICO", "GESTOR"):
+                    if not user_hospital or consulta.paciente.hospital_id != user_hospital.id:
+                        raise PermissionDenied
+                bula_texto = request.POST.get("bula_resumo", "")
+                if bula_texto:
+                    consulta.prescricao = f"{consulta.prescricao}\n\nOrientações da bula:\n{bula_texto}"
+                    consulta.save(update_fields=["prescricao"])
+                    messages.success(request, "Orientações adicionadas à receita.")
+
+    if not request.method == "POST" and paciente_preselecionado:
+        paciente_qs = Paciente.objects.filter(id=paciente_preselecionado)
+        if request.user.tipo in ("MEDICO", "GESTOR") and user_hospital:
+            paciente_qs = paciente_qs.filter(hospital=user_hospital)
+        paciente_selecionado = paciente_qs.first()
+
     return render(request, 'atendimento.html', {
         'analise_tecnica': analise_tecnica,
         'receita_paciente': receita_paciente, # Vai para o editor
         'historico_conversa': historico_conversa,
         'pacientes': pacientes,
         'paciente_selecionado': paciente_selecionado,
-        'consulta_id': consulta_id
+        'consulta_id': consulta_id,
+        'bula_resultado': bula_resultado,
+        'bula_resumo': bula_resumo,
+        'chat_messages': Consulta.objects.filter(id=consulta_id).values_list("chat_messages", flat=True).first() if consulta_id else [],
     })
 
 @login_required(login_url='/login/')
@@ -222,15 +312,15 @@ def dashboard(request):
 @hospital_scope_required(model=Consulta, lookup_kwarg="consulta_id")
 def gerar_receita(request, consulta_id):
     consulta = request._scoped_object
-    return render(request, 'receita.html', {'consulta': consulta})
+    config = getattr(consulta.hospital, "hospitalconfig", None)
+    receita = consulta.receitas.order_by("-version").first()
+    return render(request, 'receita.html', {'consulta': consulta, 'config': config, 'receita': receita})
 
 @login_required(login_url='/login/')
 @role_required("GESTOR", "ADMIN")
 def gestao_hospital(request):
-    # 1. Verifica se o usuário é Admin de algum hospital
-    try:
-        hospital = Hospital.objects.get(admin_responsavel=request.user)
-    except Hospital.DoesNotExist:
+    hospital = get_user_hospital(request.user)
+    if not hospital:
         return render(request, 'dashboard.html', {'erro': 'Você não tem permissão de gestor.'})
 
     if request.method == 'POST':
@@ -248,8 +338,9 @@ def gestao_hospital(request):
                     username=data['nome_usuario'],
                     email=data['email'],
                     password=data['senha'],
-                    tipo="MEDICO",
+                    tipo=data["tipo"],
                     hospital=hospital,
+                    pode_ver_todos_pacientes=data.get("pode_ver_todos_pacientes", False),
                 )
                 
                 # Cria o Perfil Médico vinculado ao Hospital deste Gestor
@@ -297,7 +388,11 @@ def perfil_medico(request):
 @login_required(login_url='/login/')
 @role_required("ADMIN")
 def convidar_medico(request):
-    hospital_queryset = Hospital.objects.all()
+    user_hospital = get_user_hospital(request.user)
+    if request.user.tipo in ("ADMIN", "GESTOR") and user_hospital:
+        hospital_queryset = Hospital.objects.filter(id=user_hospital.id)
+    else:
+        hospital_queryset = Hospital.objects.all()
     if request.method == "POST":
         form = ConviteMedicoForm(request.POST, hospital_queryset=hospital_queryset)
         if form.is_valid():
@@ -307,9 +402,10 @@ def convidar_medico(request):
                 username=data["nome_usuario"],
                 email=data["email"],
                 password=None,
-                tipo="MEDICO",
+                tipo=data["tipo"],
                 hospital=data["hospital"],
                 is_active=False,
+                pode_ver_todos_pacientes=data.get("pode_ver_todos_pacientes", False),
             )
             PerfilMedico.objects.create(
                 usuario=user,
@@ -322,6 +418,13 @@ def convidar_medico(request):
             token = token_generator.make_token(user)
             link = request.build_absolute_uri(
                 reverse("aceitar_convite", kwargs={"uidb64": uid, "token": token})
+            )
+            expires_at = timezone.now() + timezone.timedelta(days=7)
+            MedicoInvite.objects.create(
+                user=user,
+                hospital=data["hospital"],
+                token=token,
+                expires_at=expires_at,
             )
             message = render_to_string(
                 "email/convite_medico.txt",
@@ -357,6 +460,13 @@ def aceitar_convite(request, uidb64, token):
         user = None
 
     token_generator = PasswordResetTokenGenerator()
+    invite = MedicoInvite.objects.filter(user=user, token=token).order_by("-created_at").first()
+    if invite and invite.expires_at < timezone.now():
+        invite.status = MedicoInvite.STATUS_EXPIRADO
+        invite.save(update_fields=["status"])
+        messages.error(request, "Link expirado. Solicite um novo convite.")
+        return redirect("login")
+
     if not user or not token_generator.check_token(user, token):
         messages.error(request, "Link inválido ou expirado.")
         return redirect("login")
@@ -367,6 +477,16 @@ def aceitar_convite(request, uidb64, token):
             form.save()
             user.is_active = True
             user.save(update_fields=["is_active"])
+            if invite:
+                invite.status = MedicoInvite.STATUS_ACEITO
+                invite.save(update_fields=["status"])
+            AuditLog.objects.create(
+                user=user,
+                hospital=user.hospital,
+                action="aceitar_convite",
+                object_type="Usuario",
+                object_id=str(user.id),
+            )
             auth_login(request, user)
             messages.success(request, "Senha definida com sucesso.")
             return redirect("dashboard")

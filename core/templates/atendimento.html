@@ -1,155 +1,222 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <title>Prescrição Médica</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background-color: #eef2f5; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-        
-        .grid-layout { display: grid; grid-template-columns: 35% 65%; gap: 25px; margin-top: 20px; }
-        
-        /* Lado Esquerdo: Chat e IA */
-        .panel-ia { background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #dee2e6; }
-        .banner-ia { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 15px; }
-        .ia-response { background: #e8f4f8; padding: 15px; border-radius: 5px; font-size: 14px; color: #2c3e50; margin-bottom: 20px; white-space: pre-wrap; }
-        
-        /* Lado Direito: Papel da Receita (Editável) */
-        .panel-receita { background: #fff; border: 2px solid #2c3e50; padding: 0; position: relative; min-height: 500px; display: flex; flex-direction: column; }
-        
-        .receita-header { background: #2c3e50; color: white; padding: 15px; text-align: center; font-weight: bold; text-transform: uppercase; }
-        
-        /* O CAMPO MÁGICO: TEXTAREA QUE PARECE PAPEL */
-        textarea.papel-receita {
-            width: 100%;
-            height: 400px; /* Altura da folha */
-            padding: 30px;
-            border: none;
-            resize: none;
-            font-family: 'Courier New', Courier, monospace; /* Fonte estilo máquina/impressora */
-            font-size: 16px;
-            line-height: 1.6;
-            outline: none;
-            box-sizing: border-box;
-            color: #000;
-        }
+{% extends "base.html" %}
 
-        .receita-toolbar { padding: 15px; background: #eee; text-align: right; border-top: 1px solid #ccc; }
-        
-        button { cursor: pointer; padding: 10px 20px; border-radius: 5px; border: none; font-weight: bold; }
-        .btn-blue { background: #3498db; color: white; width: 100%; }
-        .btn-green { background: #27ae60; color: white; }
-        .btn-red { background: #c0392b; color: white; }
-        .btn-print { background: #7f8c8d; color: white; text-decoration: none; padding: 10px 20px; border-radius: 5px; display: inline-block; }
-        
-        label { font-weight: bold; display: block; margin-bottom: 5px; }
-        .input-std { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 15px; }
-        .modal-backdrop { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); align-items: center; justify-content: center; }
-        .modal { background: #fff; padding: 20px; border-radius: 8px; width: 420px; max-width: 90%; }
-        .modal h4 { margin-top: 0; }
-        .modal-actions { text-align: right; margin-top: 15px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div style="margin-bottom: 20px;">
-            <a href="{% url 'dashboard' %}" style="text-decoration: none; color: #555;">⬅ Voltar ao Painel</a>
+{% block title %}Atendimento - PrescrittoMED{% endblock %}
+
+{% block content %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="fw-bold">Atendimento médico</h1>
+            <p class="text-muted mb-0">Conduza a consulta e gere o rascunho com IA.</p>
         </div>
-
-        {% if not consulta_id %}
-        <h1>Nova Prescrição</h1>
-        <form method="POST">
-            {% csrf_token %}
-            <input type="hidden" name="acao" value="gerar_ia">
-            <label>Paciente:</label>
-            <select name="paciente" class="input-std" required>
-                <option value="">Selecione...</option>
-                {% for p in pacientes %}
-                    <option value="{{ p.id }}">{{ p.nome_completo }}</option>
-                {% endfor %}
-            </select>
-            <label>Caso Clínico / Sintomas:</label>
-            <textarea name="sintomas" class="input-std" rows="4" placeholder="Descreva o quadro..."></textarea>
-            <button type="submit" class="btn-blue">Iniciar Atendimento</button>
-        </form>
-        {% endif %}
-
         {% if consulta_id %}
-        <div class="grid-layout">
-            
-            <div class="panel-ia">
-                <h3>🤖 Auxiliar Clínico</h3>
-                <div class="banner-ia">
-                    Rascunho gerado por IA (apoio). Não substitui julgamento clínico. Revise antes de salvar/assinar.
-                </div>
-                <div class="ia-response">
-                    <strong>Análise Sugerida:</strong><br>
-                    {{ analise_tecnica }}
-                </div>
-                
-                <form method="POST">
-                    {% csrf_token %}
-                    <input type="hidden" name="acao" value="gerar_ia"> <input type="hidden" name="consulta_id" value="{{ consulta_id }}">
-                    <input type="hidden" name="historico_conversa" value="{{ historico_conversa }}">
-                    
-                    <label>Refinar / Ajustar:</label>
-                    <textarea name="sintomas" class="input-std" rows="3" placeholder="Ex: Paciente alérgico a X, troque por Y..."></textarea>
-                    <button type="submit" class="btn-blue">🔄 Pedir nova sugestão</button>
-                </form>
-            </div>
-
-            <div class="panel-receita">
-                <div class="receita-header">
-                    Receituário Médico - Dr(a). {{ user.username }}
-                </div>
-                
-                <form method="POST" id="form-receita" style="flex-grow: 1; display: flex; flex-direction: column;">
-                    {% csrf_token %}
-                    <input type="hidden" name="acao" value="salvar_edicao"> <input type="hidden" name="consulta_id" value="{{ consulta_id }}">
-
-                    <textarea name="receita_editavel" class="papel-receita">{{ receita_paciente }}</textarea>
-                    
-                    <div class="receita-toolbar">
-                        <span style="float: left; font-size: 12px; color: #666; margin-top: 10px;">
-                            * Edite livremente acima antes de salvar.
-                        </span>
-                        <button type="submit" class="btn-green">💾 1. Salvar Alterações</button>
-                        <a href="{% url 'gerar_receita' consulta_id %}" target="_blank" class="btn-print">🖨️ 2. Imprimir Oficial</a>
-                        <button type="button" class="btn-red" onclick="abrirModalAssinatura()">✅ 3. Finalizar/Assinar</button>
-                    </div>
-                </form>
-            </div>
-
-        </div>
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Voltar ao painel</a>
         {% endif %}
     </div>
 
-    <div class="modal-backdrop" id="modal-assinatura">
-        <div class="modal">
-            <h4>Confirmação obrigatória</h4>
-            <form method="POST">
-                {% csrf_token %}
-                <input type="hidden" name="acao" value="finalizar_receita">
-                <input type="hidden" name="consulta_id" value="{{ consulta_id }}">
-                <label><input type="checkbox" name="confirmacao_1" required> Revisei alergias e contraindicações relevantes.</label>
-                <label><input type="checkbox" name="confirmacao_2" required> Revisei dose, via, frequência e duração.</label>
-                <label><input type="checkbox" name="confirmacao_3" required> Revisei interações e ajustes (renal/hepático/gestação) quando aplicável.</label>
-                <label><input type="checkbox" name="confirmacao_4" required> Confirmo que o texto ao paciente está adequado e sem ambiguidades.</label>
-                <div class="modal-actions">
-                    <button type="button" onclick="fecharModalAssinatura()">Cancelar</button>
-                    <button type="submit" class="btn-red">Assinar</button>
-                </div>
-            </form>
+    {% if not consulta_id %}
+        <div class="card app-card">
+            <div class="app-card-header">
+                <h5 class="mb-1">Nova prescrição</h5>
+                <p class="text-muted mb-0">Selecione o paciente e descreva o caso clínico.</p>
+            </div>
+            <div class="app-card-body">
+                <form method="POST" class="app-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="gerar_ia">
+                    <div class="mb-3">
+                        <label class="form-label" for="paciente">Paciente</label>
+                        <select name="paciente" id="paciente" class="form-control" required>
+                            <option value="">Selecione...</option>
+                            {% for p in pacientes %}
+                                <option value="{{ p.id }}" {% if paciente_selecionado and paciente_selecionado.id == p.id %}selected{% endif %}>{{ p.nome_completo }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="sintomas">Caso clínico / Sintomas</label>
+                        <textarea name="sintomas" id="sintomas" class="form-control" rows="4" placeholder="Descreva o quadro..."></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Iniciar atendimento</button>
+                </form>
+            </div>
         </div>
-    </div>
+    {% endif %}
 
-    <script>
-        function abrirModalAssinatura() {
-            document.getElementById('modal-assinatura').style.display = 'flex';
-        }
-        function fecharModalAssinatura() {
-            document.getElementById('modal-assinatura').style.display = 'none';
-        }
-    </script>
-</body>
-</html>
+    {% if consulta_id %}
+        <div class="row g-4">
+            <div class="col-xl-3 col-lg-4">
+                <div class="card app-card h-100">
+                    <div class="app-card-header">
+                        <h5 class="mb-1">💬 Chat clínico</h5>
+                        <p class="text-muted mb-0">Copiloto para perguntas e exames.</p>
+                    </div>
+                    <div class="app-card-body">
+                        <div class="alert alert-warning small">
+                            Rascunho gerado por IA (apoio). Não substitui julgamento clínico. Revise antes de salvar/assinar.
+                        </div>
+
+                        <form method="POST" class="app-form">
+                            {% csrf_token %}
+                            <input type="hidden" name="acao" value="gerar_ia">
+                            <input type="hidden" name="consulta_id" value="{{ consulta_id }}">
+                            <input type="hidden" name="historico_conversa" value="{{ historico_conversa }}">
+
+                            <label class="form-label" for="refinar">Mensagem para o copiloto</label>
+                            <textarea name="sintomas" id="refinar" class="form-control" rows="5" placeholder="Ex: Paciente alérgico a X, troque por Y..."></textarea>
+                            <button type="submit" class="btn btn-primary mt-3 w-100">🔄 Pedir nova sugestão</button>
+                        </form>
+
+                        {% if chat_messages %}
+                            <div class="mt-3 small">
+                                <div class="fw-semibold">Histórico do chat</div>
+                                <div class="bg-light border rounded p-2 mt-2" style="max-height: 220px; overflow-y: auto;">
+                                    {% for msg in chat_messages %}
+                                        <div class="mb-2">
+                                            <strong>{{ msg.role|title }}:</strong>
+                                            <div style="white-space: pre-wrap;">{{ msg.content }}</div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        {% endif %}
+
+                        <form method="POST" class="app-form mt-3">
+                            {% csrf_token %}
+                            <input type="hidden" name="acao" value="aplicar_rascunho">
+                            <input type="hidden" name="consulta_id" value="{{ consulta_id }}">
+                            <input type="hidden" name="receita_rascunho" value="{{ receita_paciente }}">
+                            <button type="submit" class="btn btn-outline-success w-100">✅ Aplicar no rascunho</button>
+                        </form>
+
+                        <hr class="my-4">
+
+                        <h6 class="fw-semibold">Buscar bula</h6>
+                        <form method="POST" class="app-form">
+                            {% csrf_token %}
+                            <input type="hidden" name="acao" value="buscar_bula">
+                            <div class="mb-2">
+                                <input type="text" name="termo_bula" class="form-control" placeholder="Ex: dipirona">
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" value="1" id="gerar_resumo" name="gerar_resumo">
+                                <label class="form-check-label" for="gerar_resumo">Gerar resumo estruturado</label>
+                            </div>
+                            <button type="submit" class="btn btn-outline-primary w-100">Pesquisar</button>
+                        </form>
+                        {% if bula_resultado %}
+                            <div class="mt-3 small">
+                                <div class="fw-semibold">Resultado</div>
+                                <a href="{{ bula_resultado.url }}" target="_blank">{{ bula_resultado.titulo }}</a>
+                                {% if bula_resumo %}
+                                    <div class="mt-2 bg-light border rounded p-2" style="white-space: pre-wrap;">
+                                        {{ bula_resumo }}
+                                    </div>
+                                    <form method="POST" class="app-form mt-2">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="acao" value="aplicar_bula">
+                                        <input type="hidden" name="consulta_id" value="{{ consulta_id }}">
+                                        <input type="hidden" name="bula_resumo" value="{{ bula_resumo }}">
+                                        <button type="submit" class="btn btn-outline-success w-100">Adicionar orientações à receita</button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-3 col-lg-4">
+                <div class="card app-card h-100">
+                    <div class="app-card-header">
+                        <h5 class="mb-1">📋 Resumo clínico</h5>
+                        <p class="text-muted mb-0">Estrutura para apoiar decisão.</p>
+                    </div>
+                    <div class="app-card-body">
+                        <div class="bg-light border rounded p-3" style="white-space: pre-wrap;">
+                            <strong>Análise sugerida:</strong><br>
+                            {{ analise_tecnica }}
+                        </div>
+                        <div class="mt-3 small text-muted">
+                            Próximos passos sugeridos: perguntas de esclarecimento e exames quando aplicável.
+                        </div>
+                        <ul class="mt-2 small">
+                            <li>Alergias e contraindicações</li>
+                            <li>Gestação/lactação</li>
+                            <li>Função renal/hepática</li>
+                            <li>Interações medicamentosas</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-6 col-lg-4">
+                <div class="card app-card h-100">
+                    <div class="app-card-header d-flex flex-wrap justify-content-between align-items-center">
+                        <div>
+                            <h5 class="mb-1">Receituário médico</h5>
+                            <p class="text-muted mb-0">Dr(a). {{ user.username }}</p>
+                        </div>
+                        <a href="{% url 'gerar_receita' consulta_id %}" target="_blank" class="btn btn-outline-secondary">🖨️ Imprimir oficial</a>
+                    </div>
+                    <div class="app-card-body">
+                        <form method="POST" id="form-receita" class="app-form">
+                            {% csrf_token %}
+                            <input type="hidden" name="consulta_id" value="{{ consulta_id }}">
+
+                            <label class="form-label" for="receita_editavel">Texto ao paciente</label>
+                            <textarea name="receita_editavel" id="receita_editavel" class="form-control" rows="14">{{ receita_paciente }}</textarea>
+
+                            <div class="d-flex flex-wrap justify-content-between align-items-center mt-3 gap-2">
+                                <span class="text-muted small">* Edite livremente acima antes de salvar.</span>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <button type="submit" class="btn btn-success" name="acao" value="salvar_edicao">💾 Salvar alterações</button>
+                                    <button type="submit" class="btn btn-outline-primary" name="acao" value="avancar_revisao">Avançar para revisão</button>
+                                    <a href="{% url 'revisar_receita' consulta_id %}" class="btn btn-outline-secondary">🧐 Revisar receita</a>
+                                    <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalAssinatura">✅ Finalizar/Assinar</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="modalAssinatura" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Confirmação obrigatória</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form method="POST" class="app-form">
+                            {% csrf_token %}
+                            <input type="hidden" name="acao" value="finalizar_receita">
+                            <input type="hidden" name="consulta_id" value="{{ consulta_id }}">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" name="confirmacao_1" id="confirmacao_1" required>
+                                <label class="form-check-label" for="confirmacao_1">Revisei alergias e contraindicações relevantes.</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" name="confirmacao_2" id="confirmacao_2" required>
+                                <label class="form-check-label" for="confirmacao_2">Revisei dose, via, frequência e duração.</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" name="confirmacao_3" id="confirmacao_3" required>
+                                <label class="form-check-label" for="confirmacao_3">Revisei interações e ajustes (renal/hepático/gestação) quando aplicável.</label>
+                            </div>
+                            <div class="form-check mb-4">
+                                <input class="form-check-input" type="checkbox" name="confirmacao_4" id="confirmacao_4" required>
+                                <label class="form-check-label" for="confirmacao_4">Confirmo que o texto ao paciente está adequado e sem ambiguidades.</label>
+                            </div>
+                            <div class="d-flex justify-content-end gap-2">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                <button type="submit" class="btn btn-danger">Assinar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}

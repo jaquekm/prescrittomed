@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Configurações do Hospital - PrescrittoMED{% endblock %}
+
+{% block content %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="fw-bold">Configurações do hospital</h1>
+            <p class="text-muted mb-0">Branding, políticas e assinatura de rodapé.</p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Voltar ao painel</a>
+    </div>
+
+    <form method="POST" enctype="multipart/form-data" class="app-form">
+        {% csrf_token %}
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="card app-card">
+                    <div class="app-card-header">
+                        <h5 class="mb-1">Branding</h5>
+                        <p class="text-muted mb-0">Logo, cores e dados do hospital.</p>
+                    </div>
+                    <div class="app-card-body">
+                        {% include "partials/_form_fields.html" with form=branding_form %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card app-card">
+                    <div class="app-card-header">
+                        <h5 class="mb-1">Políticas</h5>
+                        <p class="text-muted mb-0">Controle de acesso e retenção.</p>
+                    </div>
+                    <div class="app-card-body">
+                        {% include "partials/_form_fields.html" with form=config_form %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="mt-3 d-flex justify-content-end">
+            <button type="submit" class="btn btn-success">Salvar configurações</button>
+        </div>
+    </form>
+{% endblock %}

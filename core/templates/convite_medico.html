@@ -1,15 +1,26 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="utf-8">
-    <title>Convidar médico</title>
-</head>
-<body>
-    <h1>Convidar médico</h1>
-    <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Enviar convite</button>
-    </form>
-</body>
-</html>
+{% extends "base.html" %}
+
+{% block title %}Convidar médico - PrescrittoMED{% endblock %}
+
+{% block content %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="fw-bold">Convidar médico</h1>
+            <p class="text-muted mb-0">Envie um convite para um novo profissional.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary" href="{% url 'convites_lista' %}">Ver convites</a>
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Voltar ao painel</a>
+        </div>
+    </div>
+
+    <div class="card app-card">
+        <div class="app-card-body">
+            <form method="post" class="app-form">
+                {% csrf_token %}
+                {% include "partials/_form_fields.html" with form=form %}
+                <button type="submit" class="btn btn-primary">Enviar convite</button>
+            </form>
+        </div>
+    </div>
+{% endblock %}
