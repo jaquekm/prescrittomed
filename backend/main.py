@@ -14,8 +14,8 @@ from fastapi.responses import JSONResponse
 
 # --- ATENÇÃO: Estes arquivos serão criados nos próximos passos ---
 # Se o VS Code marcar erro (sublinhado vermelho), é normal por enquanto!
-from schemas import PrescriptionRequest, PrescriptionResponse
-from rag_service import RAGService
+from .schemas import PrescriptionRequest, PrescriptionResponse
+from .rag_service import RAGService
 
 # Configuração de logging
 logging.basicConfig(

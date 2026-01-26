@@ -5,7 +5,7 @@ Busca semântica no banco de conhecimento e geração de prescrições
 
 import os
 import logging
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 from decouple import config
 from openai import OpenAI
 from sqlalchemy import create_engine, text
@@ -14,13 +14,27 @@ from pgvector.sqlalchemy import Vector
 
 logger = logging.getLogger(__name__)
 
-
 class RAGService:
     """Serviço para busca RAG e geração de prescrições"""
     
     def __init__(self):
-        self.openai_client = OpenAI(api_key=config("OPENAI_API_KEY"))
-        self.embedding_model = "text-embedding-3-small"  # 1536 dimensões
+        # Tenta carregar a chave
+        api_key = config('OPENAI_API_KEY', default=None)
+        
+        # --- O TIRA-TEIMA (PRINT DA VERDADE) ---
+        print("\n" + "="*50)
+        if api_key:
+            # Mostra os primeiros caracteres para conferirmos
+            print(f"🔍 O BACKEND CARREGOU ESTA CHAVE: {api_key[:8]}... (oculto)")
+        else:
+            print("❌ NENHUMA CHAVE ENCONTRADA!")
+        print("="*50 + "\n")
+        # ---------------------------------------
+
+        # Inicializa o cliente OpenAI com a chave carregada
+        self.openai_client = OpenAI(api_key=api_key)
+        
+        self.embedding_model = "text-embedding-3-small"
         self.llm_model = "gpt-4o"
         self.db_url = self._get_db_url()
         self.engine = create_engine(self.db_url, echo=False)
@@ -45,15 +59,7 @@ class RAGService:
         return f"postgresql://{user}:{password}@{host}:{port}/{database}"
     
     def generate_embedding(self, text: str) -> List[float]:
-        """
-        Gera embedding vetorial para um texto usando OpenAI
-        
-        Args:
-            text: Texto para gerar embedding
-        
-        Returns:
-            Lista de floats representando o vetor de embedding
-        """
+        """Gera embedding vetorial para um texto usando OpenAI"""
         try:
             response = self.openai_client.embeddings.create(
                 model=self.embedding_model,
@@ -70,27 +76,12 @@ class RAGService:
         limit: int = 5,
         min_similarity: float = 0.7
     ) -> List[Dict]:
-        """
-        Busca no banco de conhecimento usando similaridade de cosseno
-        
-        Args:
-            query_embedding: Vetor de embedding da query
-            limit: Número máximo de resultados
-            min_similarity: Similaridade mínima (0-1)
-        
-        Returns:
-            Lista de dicionários com resultados da busca
-        """
+        """Busca no banco de conhecimento usando similaridade de cosseno"""
         session = self.Session()
         try:
             # Converte lista para formato aceito pelo pgvector
-            # pgvector aceita arrays PostgreSQL ou strings no formato '[1,2,3]'
             embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
             
-            # Query de busca por similaridade de cosseno
-            # <=> é o operador de distância de cosseno no pgvector
-            # 1 - distância = similaridade (quanto menor a distância, maior a similaridade)
-            # Usamos bindparam para passar o vetor corretamente
             from sqlalchemy import bindparam
             
             query = text("""
@@ -145,24 +136,14 @@ class RAGService:
         diagnosis: Optional[str],
         context_docs: List[Dict]
     ) -> Dict:
-        """
-        Gera prescrição usando GPT-4o com contexto RAG
+        """Gera prescrição usando GPT-4o com contexto RAG"""
         
-        Args:
-            symptoms: Sintomas do paciente
-            diagnosis: Diagnóstico (opcional)
-            context_docs: Documentos relevantes do knowledge base
-        
-        Returns:
-            Dicionário com a prescrição estruturada
-        """
         # Constrói contexto a partir dos documentos encontrados
         context_text = "\n\n".join([
             f"[Fonte: {doc['source_title']} ({doc['source_type']})]\n{doc['content']}"
             for doc in context_docs
         ])
         
-        # Prompt do sistema
         system_prompt = """Você é um assistente médico especializado em gerar prescrições baseadas em protocolos clínicos oficiais.
 
 IMPORTANTE:
@@ -174,7 +155,6 @@ IMPORTANTE:
 
 Retorne APENAS JSON válido, sem markdown ou texto adicional."""
 
-        # Prompt do usuário
         user_prompt = f"""Com base nos sintomas e diagnóstico abaixo, e usando APENAS as informações do contexto fornecido, gere uma prescrição médica estruturada.
 
 SINTOMAS: {symptoms}
@@ -211,8 +191,8 @@ Retorne um JSON com a seguinte estrutura:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.0,  # Determinístico conforme requisitos
-                response_format={"type": "json_object"}  # Força resposta JSON
+                temperature=0.0,
+                response_format={"type": "json_object"}
             )
             
             import json
@@ -229,7 +209,6 @@ Retorne um JSON com a seguinte estrutura:
                 for doc in context_docs
             ]
             
-            # Calcula confidence score médio
             if context_docs:
                 prescription_json['confidence_score'] = sum(
                     doc['similarity'] for doc in context_docs
@@ -248,16 +227,8 @@ Retorne um JSON com a seguinte estrutura:
         symptoms: str, 
         diagnosis: Optional[str] = None
     ) -> Dict:
-        """
-        Método principal: busca RAG + geração de prescrição
+        """Método principal: busca RAG + geração de prescrição"""
         
-        Args:
-            symptoms: Sintomas do paciente
-            diagnosis: Diagnóstico (opcional)
-        
-        Returns:
-            Dicionário com prescrição completa
-        """
         # 1. Gera embedding da query
         query_text = f"{symptoms} {diagnosis or ''}".strip()
         query_embedding = self.generate_embedding(query_text)

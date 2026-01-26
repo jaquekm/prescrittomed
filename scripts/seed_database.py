@@ -16,10 +16,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     from decouple import config
-    from sqlalchemy import create_engine, text, Column, String, Text, Date, Integer, JSON
+    from sqlalchemy import create_engine, text, Column, String, Text, Date, Integer
     from sqlalchemy.dialects.postgresql import UUID, JSONB
-    from sqlalchemy.ext.declarative import declarative_base
-    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.orm import sessionmaker, declarative_base
     from pgvector.sqlalchemy import Vector
 except ImportError as e:
     print(f"❌ Erro: Dependências não instaladas.")
@@ -44,7 +43,11 @@ class KnowledgeBase(Base):
     source_id = Column(String(255), nullable=True)
     version_date = Column(Date, nullable=True)
     validity_status = Column(String(20), default='ACTIVE')
-    metadata = Column(JSONB, nullable=True)
+    
+    # CORREÇÃO AQUI: Renomeamos o atributo Python para meta_data, 
+    # mas mantemos o nome da coluna no banco como 'metadata'
+    meta_data = Column('metadata', JSONB, nullable=True)
+    
     hospital_id = Column(Integer, nullable=True)
     created_at = Column('created_at', nullable=False, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column('updated_at', nullable=False, server_default=text('CURRENT_TIMESTAMP'))
@@ -55,12 +58,10 @@ def get_db_url():
     database_url = os.getenv('DATABASE_URL')
     
     if database_url:
-        # Garante que a URL está no formato correto para SQLAlchemy
         if database_url.startswith('postgres://'):
             database_url = database_url.replace('postgres://', 'postgresql://', 1)
         return database_url
     
-    # Fallback: constrói URL a partir de variáveis individuais
     host = config('POSTGRES_HOST', default='localhost')
     port = config('POSTGRES_PORT', default=5432, cast=int)
     database = config('POSTGRES_DB', default='prescrittomed_db')
@@ -71,27 +72,10 @@ def get_db_url():
 
 
 def generate_fake_embedding(dimension: int = 1536) -> List[float]:
-    """
-    Gera um vetor de embedding fake (aleatório) para testes.
-    
-    Args:
-        dimension: Dimensão do vetor (padrão: 1536 para OpenAI text-embedding-3-small)
-    
-    Returns:
-        Lista de floats representando o vetor de embedding
-    """
-    # Gera valores aleatórios normalizados entre -1 e 1
-    # Isso simula um embedding real que geralmente tem valores nesse range
     return [random.uniform(-1.0, 1.0) for _ in range(dimension)]
 
 
 def get_seed_data():
-    """
-    Retorna os dados iniciais para popular a knowledge_base.
-    
-    Returns:
-        Lista de dicionários com os dados de seed
-    """
     return [
         {
             'content': (
@@ -176,110 +160,49 @@ def seed_database():
     print("🌱 Iniciando seed do banco de dados...")
     print("-" * 60)
     
-    # Obtém URL de conexão
     try:
         db_url = get_db_url()
         print(f"📊 Conectando ao banco de dados...")
-        print(f"   Host: {db_url.split('@')[1].split('/')[0] if '@' in db_url else 'N/A'}")
     except Exception as e:
-        print(f"❌ Erro ao obter configuração do banco: {e}")
-        print("   Certifique-se de que o arquivo .env existe ou as variáveis de ambiente estão definidas.")
+        print(f"❌ Erro ao obter configuração: {e}")
         sys.exit(1)
     
-    # Cria engine e sessão
     try:
         engine = create_engine(db_url, echo=False)
-        
-        # Testa conexão
-        with engine.connect() as conn:
-            result = conn.execute(text("SELECT version()"))
-            version = result.fetchone()[0]
-            print(f"✅ Conectado ao PostgreSQL")
-            print(f"   Versão: {version.split(',')[0]}")
-            print()
-    except Exception as e:
-        print(f"❌ Erro ao conectar no banco de dados:")
-        print(f"   {e}")
-        print()
-        print("💡 Dicas:")
-        print("   1. Verifique se o container Docker está rodando: docker-compose ps")
-        print("   2. Verifique as credenciais no arquivo .env")
-        print("   3. Teste a conexão: python check_db.py")
-        sys.exit(1)
-    
-    # Cria sessão
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    
-    try:
-        # Verifica se a tabela existe
-        with engine.connect() as conn:
-            result = conn.execute(text("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
-                    AND table_name = 'knowledge_base'
-                )
-            """))
-            table_exists = result.fetchone()[0]
-            
-            if not table_exists:
-                print("❌ Tabela 'knowledge_base' não encontrada!")
-                print("   Execute o script de inicialização SQL primeiro:")
-                print("   docker-compose up -d")
-                sys.exit(1)
+        Session = sessionmaker(bind=engine)
+        session = Session()
         
         # Obtém dados de seed
         seed_items = get_seed_data()
         
-        print(f"📝 Preparando {len(seed_items)} itens para inserção...")
-        print()
-        
-        inserted_count = 0
+        print(f"📝 Inserindo {len(seed_items)} itens...")
         
         for item_data in seed_items:
-            # Gera embedding fake
             embedding_vector = generate_fake_embedding(1536)
             
-            # Cria objeto KnowledgeBase
             kb_item = KnowledgeBase(
                 content=item_data['content'],
-                embedding=embedding_vector,  # pgvector converterá automaticamente
+                embedding=embedding_vector,
                 source_type=item_data['source_type'],
                 source_title=item_data['source_title'],
                 source_id=item_data['source_id'],
                 version_date=item_data['version_date'],
                 validity_status=item_data['validity_status'],
-                metadata=item_data['metadata']
+                # CORREÇÃO AQUI TAMBÉM: usando meta_data
+                meta_data=item_data['metadata']
             )
             
-            # Adiciona à sessão
             session.add(kb_item)
-            print(f"   ✓ {item_data['source_title']} ({item_data['source_type']})")
+            print(f"   ✓ {item_data['source_title']}")
         
-        # Commit das inserções
         session.commit()
-        inserted_count = len(seed_items)
-        
-        print()
-        print(f"✅ {inserted_count} itens inseridos com sucesso!")
-        print()
-        
-        # Verifica inserção
-        count = session.query(KnowledgeBase).count()
-        print(f"📊 Total de itens na knowledge_base: {count}")
+        print("\n✅ Sucesso! Banco populado.")
         
     except Exception as e:
         session.rollback()
-        print(f"❌ Erro ao inserir dados: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+        print(f"\n❌ Erro ao inserir dados: {e}")
     finally:
         session.close()
-        engine.dispose()
-        print("🔒 Conexão fechada.")
-
 
 if __name__ == '__main__':
     seed_database()
