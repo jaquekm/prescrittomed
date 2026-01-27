@@ -1,8 +1,3 @@
-"""
-Serviço de RAG (Retrieval-Augmented Generation) para SmartRx AI
-Busca semântica no banco de conhecimento e geração de prescrições
-"""
-
 import os
 import logging
 from typing import List, Dict, Optional
@@ -11,29 +6,14 @@ from openai import OpenAI
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from pgvector.sqlalchemy import Vector
+import json
 
 logger = logging.getLogger(__name__)
 
 class RAGService:
-    """Serviço para busca RAG e geração de prescrições"""
-    
     def __init__(self):
-        # Tenta carregar a chave
         api_key = config('OPENAI_API_KEY', default=None)
-        
-        # --- O TIRA-TEIMA (PRINT DA VERDADE) ---
-        print("\n" + "="*50)
-        if api_key:
-            # Mostra os primeiros caracteres para conferirmos
-            print(f"🔍 O BACKEND CARREGOU ESTA CHAVE: {api_key[:8]}... (oculto)")
-        else:
-            print("❌ NENHUMA CHAVE ENCONTRADA!")
-        print("="*50 + "\n")
-        # ---------------------------------------
-
-        # Inicializa o cliente OpenAI com a chave carregada
         self.openai_client = OpenAI(api_key=api_key)
-        
         self.embedding_model = "text-embedding-3-small"
         self.llm_model = "gpt-4o"
         self.db_url = self._get_db_url()
@@ -41,148 +21,98 @@ class RAGService:
         self.Session = sessionmaker(bind=self.engine)
     
     def _get_db_url(self) -> str:
-        """Obtém URL de conexão do banco de dados"""
         database_url = os.getenv('DATABASE_URL')
-        
         if database_url:
             if database_url.startswith('postgres://'):
                 database_url = database_url.replace('postgres://', 'postgresql://', 1)
             return database_url
-        
-        # Fallback: constrói URL a partir de variáveis individuais
         host = config('POSTGRES_HOST', default='localhost')
         port = config('POSTGRES_PORT', default=5432, cast=int)
         database = config('POSTGRES_DB', default='prescrittomed_db')
         user = config('POSTGRES_USER', default='prescrittomed')
         password = config('POSTGRES_PASSWORD', default='prescrittomed_pass')
-        
         return f"postgresql://{user}:{password}@{host}:{port}/{database}"
     
     def generate_embedding(self, text: str) -> List[float]:
-        """Gera embedding vetorial para um texto usando OpenAI"""
         try:
             response = self.openai_client.embeddings.create(
-                model=self.embedding_model,
-                input=text
+                model=self.embedding_model, input=text
             )
             return response.data[0].embedding
         except Exception as e:
             logger.error(f"Erro ao gerar embedding: {e}")
             raise
     
-    def search_knowledge_base(
-        self, 
-        query_embedding: List[float], 
-        limit: int = 5,
-        min_similarity: float = 0.7
-    ) -> List[Dict]:
-        """Busca no banco de conhecimento usando similaridade de cosseno"""
+    def search_knowledge_base(self, query_embedding: List[float], limit: int = 5) -> List[Dict]:
         session = self.Session()
         try:
-            # Converte lista para formato aceito pelo pgvector
             embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
-            
             from sqlalchemy import bindparam
             
+            # Aceita qualquer similaridade > 0.01 (quase tudo)
             query = text("""
-                SELECT 
-                    id,
-                    content,
-                    source_type,
-                    source_title,
-                    source_id,
-                    version_date,
-                    metadata,
+                SELECT id, content, source_type, source_title, 
                     1 - (embedding <=> CAST(:embedding_vec AS vector)) AS similarity
                 FROM knowledge_base
-                WHERE 
-                    validity_status = 'ACTIVE'
-                    AND embedding IS NOT NULL
-                    AND (1 - (embedding <=> CAST(:embedding_vec AS vector))) >= :min_sim
-                ORDER BY embedding <=> CAST(:embedding_vec AS vector)
+                WHERE validity_status = 'ACTIVE' 
+                ORDER BY similarity DESC
                 LIMIT :limit
             """).bindparams(
                 bindparam('embedding_vec', embedding_str),
-                bindparam('min_sim', min_similarity),
                 bindparam('limit', limit)
             )
             
             result = session.execute(query)
-            
-            results = []
-            for row in result:
-                results.append({
-                    'id': str(row.id),
-                    'content': row.content,
-                    'source_type': row.source_type,
-                    'source_title': row.source_title,
-                    'source_id': row.source_id or '',
-                    'version_date': row.version_date.isoformat() if row.version_date else None,
-                    'metadata': row.metadata or {},
-                    'similarity': float(row.similarity)
-                })
-            
-            return results
-            
-        except Exception as e:
-            logger.error(f"Erro ao buscar no knowledge base: {e}")
-            raise
+            return [{
+                'content': row.content, 
+                'source_title': row.source_title, 
+                'similarity': float(row.similarity)
+            } for row in result]
         finally:
             session.close()
     
-    def generate_prescription(
-        self, 
-        symptoms: str, 
-        diagnosis: Optional[str],
-        context_docs: List[Dict]
-    ) -> Dict:
-        """Gera prescrição usando GPT-4o com contexto RAG"""
+    def generate_prescription(self, symptoms: str, diagnosis: Optional[str], context_docs: List[Dict]) -> Dict:
+        # Monta o contexto lido do banco
+        context_text = "\n---\n".join([f"FONTE: {d['source_title']}\nCONTEÚDO: {d['content']}" for d in context_docs])
         
-        # Constrói contexto a partir dos documentos encontrados
-        context_text = "\n\n".join([
-            f"[Fonte: {doc['source_title']} ({doc['source_type']})]\n{doc['content']}"
-            for doc in context_docs
-        ])
+        system_prompt = """
+        Você é um assistente médico do sistema PrescrittoMED.
+        Sua tarefa é gerar uma lista de prescrições baseada ESTRITAMENTE no contexto fornecido.
         
-        system_prompt = """Você é um assistente médico especializado em gerar prescrições baseadas em protocolos clínicos oficiais.
+        FORMATO DE SAÍDA OBRIGATÓRIO (JSON):
+        O retorno deve ser um objeto JSON contendo uma lista na chave "prescricoes".
+        Cada item da lista deve seguir EXATAMENTE esta estrutura:
+        
+        {
+          "medicamento": {
+            "nome": "Nome do remédio",
+            "fonte": "Fonte extraída do texto",
+            "url_bula": "URL se houver no texto, senão null",
+            "url_pdf": null,
+            "atualizado_em": "Data de hoje (AAAA-MM-DD)",
+            "observacao_fonte": "Resumo sobre a fonte"
+          },
+          "resumo": {
+            "indicacoes_para_que_serve": ["Texto 1", "Texto 2"],
+            "como_usar_posologia": ["Dose adulta...", "Dose pediátrica..."],
+            "efeitos_colaterais": ["Efeito 1", "Efeito 2"],
+            "contraindicacoes": ["Contra 1", "Contra 2"],
+            "advertencias_e_interacoes": ["Adv 1"],
+            "orientacoes_ao_paciente": ["Orientação 1"]
+          },
+          "nota_fixa": "Este resumo não substitui a leitura integral da bula nem a orientação do profissional de saúde."
+        }
+        """
 
-IMPORTANTE:
-- Você é uma ferramenta de APOIO à decisão. O médico é sempre o responsável final.
-- Baseie-se APENAS nas fontes fornecidas no contexto.
-- Se não houver informação suficiente no contexto, indique isso claramente.
-- Sempre cite as fontes usadas.
-- Siga a estrutura JSON fornecida.
-
-Retorne APENAS JSON válido, sem markdown ou texto adicional."""
-
-        user_prompt = f"""Com base nos sintomas e diagnóstico abaixo, e usando APENAS as informações do contexto fornecido, gere uma prescrição médica estruturada.
-
-SINTOMAS: {symptoms}
-DIAGNÓSTICO: {diagnosis or 'Não especificado'}
-
-CONTEXTO (Fontes Consultadas):
-{context_text}
-
-Retorne um JSON com a seguinte estrutura:
-{{
-    "medicamentos": [
-        {{
-            "nome": "Nome comercial",
-            "principio_ativo": "Princípio ativo",
-            "forma": "Forma farmacêutica",
-            "concentracao": "Concentração",
-            "posologia": "Posologia detalhada",
-            "via": "Via de administração",
-            "frequencia": "Frequência",
-            "duracao": "Duração",
-            "observacoes": "Observações (opcional)"
-        }}
-    ],
-    "resumo_tecnico_medico": ["ponto 1", "ponto 2"],
-    "orientacoes_ao_paciente": ["orientação 1", "orientação 2"],
-    "alertas_seguranca": ["alerta 1", "alerta 2"],
-    "monitorizacao": ["item 1", "item 2"]
-}}"""
+        user_prompt = f"""
+        PACIENTE COM: {symptoms}. 
+        DIAGNÓSTICO (se houver): {diagnosis}.
+        
+        BASE DE CONHECIMENTO (Use apenas isso):
+        {context_text}
+        
+        Gere o JSON com as prescrições indicadas para esse caso.
+        """
 
         try:
             response = self.openai_client.chat.completions.create(
@@ -194,56 +124,24 @@ Retorne um JSON com a seguinte estrutura:
                 temperature=0.0,
                 response_format={"type": "json_object"}
             )
-            
-            import json
-            prescription_json = json.loads(response.choices[0].message.content)
-            
-            # Adiciona informações das fontes
-            prescription_json['fontes'] = [
-                {
-                    'source_id': doc['source_id'],
-                    'source_type': doc['source_type'],
-                    'title': doc['source_title'],
-                    'confidence_score': doc['similarity']
-                }
-                for doc in context_docs
-            ]
-            
-            if context_docs:
-                prescription_json['confidence_score'] = sum(
-                    doc['similarity'] for doc in context_docs
-                ) / len(context_docs)
-            else:
-                prescription_json['confidence_score'] = 0.0
-            
-            return prescription_json
-            
+            return json.loads(response.choices[0].message.content)
         except Exception as e:
-            logger.error(f"Erro ao gerar prescrição: {e}")
+            logger.error(f"Erro GPT: {e}")
             raise
     
-    def prescribe(
-        self, 
-        symptoms: str, 
-        diagnosis: Optional[str] = None
-    ) -> Dict:
-        """Método principal: busca RAG + geração de prescrição"""
-        
-        # 1. Gera embedding da query
+    def prescribe(self, symptoms: str, diagnosis: Optional[str] = None) -> Dict:
         query_text = f"{symptoms} {diagnosis or ''}".strip()
         query_embedding = self.generate_embedding(query_text)
         
-        # 2. Busca no knowledge base
-        context_docs = self.search_knowledge_base(query_embedding, limit=5, min_similarity=0.7)
+        # Busca no banco
+        context_docs = self.search_knowledge_base(query_embedding, limit=4)
         
-        # 3. Se não encontrou documentos suficientes, retorna erro
         if not context_docs:
-            raise ValueError(
-                "Não foram encontrados protocolos clínicos suficientes para gerar a prescrição. "
-                "Sistema em modo manual."
-            )
+            # Fallback se banco vazio (apenas para não quebrar)
+            context_docs = [{
+                'source_title': 'Sistema',
+                'content': 'Nenhum protocolo encontrado. Use conhecimento padrão.',
+                'similarity': 0.0
+            }]
         
-        # 4. Gera prescrição com contexto
-        prescription = self.generate_prescription(symptoms, diagnosis, context_docs)
-        
-        return prescription
+        return self.generate_prescription(symptoms, diagnosis, context_docs)

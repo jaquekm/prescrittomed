@@ -5,8 +5,8 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'SmartRx AI - Sistema de Apoio à Decisão Clínica',
-  description: 'Sistema de apoio à decisão para prescrições médicas assistidas por IA',
+  title: "PrescrittoMED - Sistema de Apoio à Prescrições Clínicas",
+  description: "Sistema de apoio para prescrições médicas por IA",
 };
 
 export default function RootLayout({

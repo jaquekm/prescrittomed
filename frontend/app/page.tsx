@@ -60,9 +60,11 @@ export default function CockpitPage() {
         <div className="w-[30%] bg-white border-r border-gray-200 shadow-sm">
           <div className="p-6 h-full flex flex-col">
             <div className="mb-6">
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">
-                SmartRx AI
+              {/* --- MUDANÇA AQUI --- */}
+              <h1 className="text-2xl font-bold text-blue-900 mb-2">
+                PrescrittoMED
               </h1>
+              {/* -------------------- */}
               <p className="text-sm text-gray-600">
                 Sistema de Apoio à Decisão Clínica
               </p>
