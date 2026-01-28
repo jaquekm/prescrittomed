@@ -1,183 +1,129 @@
 import os
-import logging
 import json
-from typing import List, Dict, Optional
-from decouple import config
+import logging
+import requests
+from typing import Optional
 from openai import OpenAI
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-from pgvector.sqlalchemy import Vector
-from dotenv import load_dotenv, find_dotenv
+from decouple import config
 
-# --- CARREGAMENTO BLINDADO ---
-env_path = find_dotenv()
-load_dotenv(env_path)
-
+# Configuração de Logs
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class RAGService:
     def __init__(self):
-        print("--- INICIANDO RAG SERVICE ---")
-        
-        # 1. Tenta pegar a chave
-        api_key = os.getenv("OPENAI_API_KEY") or config('OPENAI_API_KEY', default=None)
-
+        # 1. Configura OpenAI
+        api_key = config("OPENAI_API_KEY", default=os.getenv("OPENAI_API_KEY"))
         if not api_key:
-            print("❌ ERRO CRÍTICO: Chave não encontrada!")
-            self.openai_client = None
-        else:
-            masked_key = f"{api_key[:8]}...{api_key[-4:]}" if len(api_key) > 10 else "Key Curta"
-            print(f"✅ API Key Carregada: {masked_key}")
-            self.openai_client = OpenAI(api_key=api_key)
+            logger.error("❌ OPENAI_API_KEY não encontrada!")
+            raise ValueError("OPENAI_API_KEY ausente")
+        self.client = OpenAI(api_key=api_key)
 
-        self.embedding_model = "text-embedding-3-small"
-        self.llm_model = "gpt-4o"
+        # 2. Configura Supabase (Modo API REST - Bypass de Instalação)
+        self.sb_url = config("SUPABASE_URL", default=os.getenv("SUPABASE_URL"))
+        self.sb_key = config("SUPABASE_KEY", default=os.getenv("SUPABASE_KEY"))
         
-        self.db_url = self._get_db_url()
-        self.engine = create_engine(self.db_url, echo=False)
-        self.Session = sessionmaker(bind=self.engine)
-    
-    def _get_db_url(self) -> str:
-        database_url = os.getenv('DATABASE_URL')
-        if database_url and database_url.startswith('postgres://'):
-            return database_url.replace('postgres://', 'postgresql://', 1)
-            
-        host = config('POSTGRES_HOST', default='localhost')
-        port = config('POSTGRES_PORT', default=5432, cast=int)
-        database = config('POSTGRES_DB', default='prescrittomed_db')
-        user = config('POSTGRES_USER', default='prescrittomed')
-        password = config('POSTGRES_PASSWORD', default='prescrittomed_pass')
-        return f"postgresql://{user}:{password}@{host}:{port}/{database}"
-    
-    def generate_embedding(self, text: str) -> List[float]:
-        if not self.openai_client: raise ValueError("Sem API Key")
-        try:
-            return self.openai_client.embeddings.create(
-                model=self.embedding_model, input=text.replace("\n", " ")
-            ).data[0].embedding
-        except Exception as e:
-            logger.error(f"Erro Embedding: {e}")
-            raise
-    
-    def search_knowledge_base(self, query_embedding: List[float], limit: int = 5) -> List[Dict]:
-        session = self.Session()
-        try:
-            embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
-            # Nota: Ajuste a query conforme a estrutura real da sua tabela (se tiver source_id, uuid, etc)
-            query = text("""
-                SELECT id, content, source_type, source_title, 
-                    1 - (embedding <=> CAST(:embedding_vec AS vector)) AS similarity
-                FROM knowledge_base
-                WHERE validity_status = 'ACTIVE' 
-                ORDER BY similarity DESC
-                LIMIT :limit
-            """).bindparams(embedding_vec=embedding_str, limit=limit)
-            
-            result = session.execute(query)
-            return [{
-                'source_id': str(row.id), # Convertendo para string para garantir compatibilidade
-                'content': row.content, 
-                'source_type': row.source_type,
-                'source_title': row.source_title, 
-                'similarity': float(row.similarity)
-            } for row in result]
-        except Exception as e:
-            print(f"⚠️ Erro busca DB: {e}")
-            return []
-        finally:
-            session.close()
-    
-    def generate_prescription(self, symptoms: str, diagnosis: Optional[str], context_docs: List[Dict]) -> Dict:
-        if not self.openai_client: raise ValueError("Sem API Key")
+        if not self.sb_url or not self.sb_key:
+            logger.warning("⚠️ Credenciais do Supabase não encontradas. O histórico não será salvo.")
 
-        # Prepara contexto
-        if not context_docs:
-            context_text = "Nenhuma informação específica encontrada na base."
-        else:
-            context_text = "\n---\n".join([f"FONTE ({d['source_title']}): {d['content']}" for d in context_docs])
-        
-        # PROMPT ALINHADO AO SCHEMA PYDANTIC
-        system_prompt = """
-        Você é um médico assistente do PrescrittoMED.
-        Gere um JSON estritamente compatível com a seguinte estrutura.
-        
-        IMPORTANTE: Responda APENAS o JSON, sem markdown.
-        
-        Estrutura esperada (exemplo):
-        {
-          "medicamentos": [
-            {
-              "nome": "Nome",
-              "principio_ativo": "Ativo",
-              "forma": "Comprimido",
-              "concentracao": "500mg",
-              "posologia": "1 cp a cada 8h",
-              "via": "Oral",
-              "frequencia": "8/8h",
-              "duracao": "7 dias",
-              "observacoes": "Após refeições"
+    def _salvar_no_supabase(self, sintomas: str, diagnostico: Optional[str], prescricao: dict):
+        """
+        Envia os dados para o Supabase usando HTTP padrão (requests),
+        evitando a necessidade de instalar a biblioteca pesada.
+        """
+        if not self.sb_url or not self.sb_key:
+            return
+
+        try:
+            # Endpoint da tabela (REST API padrão do Supabase)
+            # Remove barra extra se houver
+            base_url = self.sb_url.rstrip('/')
+            url = f"{base_url}/rest/v1/historico_prescricoes"
+            
+            headers = {
+                "apikey": self.sb_key,
+                "Authorization": f"Bearer {self.sb_key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal" # Não precisa retornar o objeto criado, economiza dados
             }
-          ],
-          "resumo_tecnico_medico": ["Texto 1", "Texto 2"],
-          "orientacoes_ao_paciente": ["Orientação 1"],
-          "alertas_seguranca": ["Alerta 1"],
-          "monitorizacao": ["Monitorar X"]
+            
+            payload = {
+                "sintomas": sintomas,
+                "diagnostico_previo": diagnostico,
+                "prescricao_json": prescricao
+            }
+
+            response = requests.post(url, json=payload, headers=headers)
+            
+            if response.status_code in [200, 201, 204]:
+                logger.info("💾 Prescrição salva no Supabase (Via API REST).")
+            else:
+                logger.error(f"⚠️ Falha ao salvar no Supabase: {response.status_code} - {response.text}")
+                
+        except Exception as e:
+            logger.error(f"❌ Erro de conexão com Supabase: {e}")
+
+    def prescribe(self, symptoms: str, diagnosis: Optional[str] = None) -> dict:
+        logger.info(f"📩 Processando sintomas: {symptoms}")
+
+        # Prompt do Sistema (Mantivemos a mesma lógica Sênior)
+        system_prompt = """
+        Você é o SmartRx AI, assistente médico farmacológico.
+        Retorne APENAS um JSON válido seguindo estritamente esta estrutura:
+        {
+            "prescricoes": [
+                {
+                    "medicamento": {
+                        "nome": "Nome do Medicamento",
+                        "fonte": "Fonte da informação",
+                        "url_bula": "URL opcional",
+                        "nota_fixa": "Uso sob prescrição."
+                    },
+                    "resumo": {
+                        "indicacoes_para_que_serve": ["Indicação 1"],
+                        "como_usar_posologia": ["Posologia detalhada"],
+                        "efeitos_colaterais": ["Efeito 1"],
+                        "contraindicacoes": ["Contraindicação 1"],
+                        "advertencias_e_interacoes": ["Interação 1"],
+                        "orientacoes_ao_paciente": ["Orientação 1"]
+                    },
+                    "nota_fixa": "Consulte um médico."
+                }
+            ]
         }
+        Se for emergência grave, retorne um JSON com orientação de ir ao PS.
         """
 
-        user_prompt = f"PACIENTE: {symptoms}. DIAGNÓSTICO: {diagnosis}.\nCONTEXTO TÉCNICO:\n{context_text}"
+        user_content = f"Paciente apresenta: {symptoms}."
+        if diagnosis:
+            user_content += f" Diagnóstico/Suspeita: {diagnosis}."
 
         try:
-            response = self.openai_client.chat.completions.create(
-                model=self.llm_model,
+            # Chamada OpenAI
+            response = self.client.chat.completions.create(
+                model="gpt-3.5-turbo-0125",
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_content}
                 ],
-                temperature=0.0,
+                temperature=0.2,
                 response_format={"type": "json_object"}
             )
-            
-            # Parse do JSON gerado pelo GPT
-            generated_data = json.loads(response.choices[0].message.content)
-            
-            # Injeta as fontes recuperadas (para bater com o Schema SourceResponse)
-            # O GPT gera o texto, nós garantimos a rastreabilidade das fontes aqui
-            fontes_estruturadas = []
-            for doc in context_docs:
-                fontes_estruturadas.append({
-                    "source_id": str(doc.get('source_id', 'unknown')),
-                    "source_type": doc.get('source_type', 'REFERENCE'),
-                    "title": doc.get('source_title', 'Sem título'),
-                    "confidence_score": doc.get('similarity', 0.0)
-                })
-            
-            # Adiciona metadados finais
-            generated_data['fontes'] = fontes_estruturadas
-            generated_data['confidence_score'] = max([f['confidence_score'] for f in fontes_estruturadas]) if fontes_estruturadas else 0.0
-            
-            return generated_data
+
+            content = response.choices[0].message.content
+            parsed_json = json.loads(content)
+
+            # Salva no banco (Assíncrono na lógica, mas síncrono aqui por simplicidade)
+            self._salvar_no_supabase(symptoms, diagnosis, parsed_json)
+
+            return parsed_json
 
         except Exception as e:
-            logger.error(f"Erro GPT: {e}")
-            # Retorna estrutura vazia/erro segura em caso de falha grave
+            logger.error(f"❌ Erro crítico: {e}")
             return {
-                "medicamentos": [],
-                "resumo_tecnico_medico": ["Erro ao gerar prescrição."],
-                "orientacoes_ao_paciente": ["Consulte o suporte."],
-                "alertas_seguranca": [],
-                "monitorizacao": [],
-                "fontes": [],
-                "confidence_score": 0.0
+                "prescricoes": [{
+                    "medicamento": {"nome": "Erro no Sistema", "fonte": "Backend"},
+                    "resumo": {},
+                    "nota_fixa": "Por favor, tente novamente."
+                }]
             }
-    
-    def prescribe(self, symptoms: str, diagnosis: Optional[str] = None) -> Dict:
-        query_text = f"{symptoms} {diagnosis or ''}".strip()
-        try:
-            query_embedding = self.generate_embedding(query_text)
-            context_docs = self.search_knowledge_base(query_embedding, limit=4)
-        except Exception as e:
-            print(f"⚠️ Erro contexto: {e}")
-            context_docs = []
-        
-        return self.generate_prescription(symptoms, diagnosis, context_docs)
