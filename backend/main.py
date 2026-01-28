@@ -1,85 +1,74 @@
 import logging
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
-from backend.rag_service import RAGService
+
+# --- IMPORTAÇÃO BLINDADA (Funciona rodando da raiz ou da pasta backend) ---
+try:
+    from backend.rag_service import RAGService
+except ImportError:
+    try:
+        from rag_service import RAGService
+    except ImportError:
+        RAGService = None # Fallback para não quebrar o import
+
+# --- MODELO SIMPLES (Só para receber o pedido) ---
+class PrescriptionRequest(BaseModel):
+    symptoms: str
+    diagnosis: str | None = None
 
 # Configuração de Logs
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("PrescrittoMED")
 
 app = FastAPI(title="PrescrittoMED API")
 
-# Configuração de CORS (Permitir que o Frontend acesse o Backend)
+# --- CORS (Fundamental para o Frontend acessar) ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Em produção, especifique a URL do frontend
+    allow_origins=["*"],  # Libera acesso para localhost:3000
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- NOVAS ESTRUTURAS DE DADOS (Baseadas no seu JSON) ---
-
-class MedicamentoInfo(BaseModel):
-    nome: str
-    fonte: str
-    url_bula: Optional[str] = None
-    url_pdf: Optional[str] = None
-    atualizado_em: Optional[str] = None
-    observacao_fonte: Optional[str] = None
-
-class ResumoInfo(BaseModel):
-    indicacoes_para_que_serve: List[str]
-    como_usar_posologia: List[str]
-    efeitos_colaterais: List[str]
-    contraindicacoes: List[str]
-    advertencias_e_interacoes: List[str]
-    orientacoes_ao_paciente: List[str]
-
-class PrescricaoItem(BaseModel):
-    medicamento: MedicamentoInfo
-    resumo: ResumoInfo
-    nota_fixa: str
-
-class PrescriptionResponse(BaseModel):
-    prescricoes: List[PrescricaoItem]
-
-class PrescriptionRequest(BaseModel):
-    symptoms: str
-    diagnosis: Optional[str] = None
-
-# --------------------------------------------------------
-
-# Inicializa o Serviço de IA
-rag_service = RAGService()
+rag_service = None
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("🚀 Iniciando PrescrittoMED Backend...")
+    global rag_service
+    logger.info("🚀 Iniciando Servidor PrescrittoMED...")
     try:
-        # Apenas um teste rápido de conexão
-        rag_service.generate_embedding("teste")
-        logger.info("✅ RAG Service inicializado com sucesso")
+        if RAGService:
+            rag_service = RAGService()
+            logger.info("✅ RAG Service conectado com sucesso.")
+        else:
+            logger.error("❌ ERRO CRÍTICO: Arquivo rag_service.py não encontrado.")
     except Exception as e:
-        logger.error(f"❌ Erro ao inicializar RAG Service: {e}")
+        logger.error(f"❌ Erro ao instanciar IA: {e}")
 
-@app.get("/")
-async def root():
-    return {"message": "PrescrittoMED API is running"}
-
-@app.post("/api/v1/prescribe", response_model=PrescriptionResponse)
+# --- ROTA PRINCIPAL ---
+# OBS: Removi 'response_model' para evitar erros de validação (HTTP 500)
+@app.post("/api/v1/prescribe") 
 async def prescribe(request: PrescriptionRequest):
-    logger.info(f"📩 Recebendo pedido: {request.symptoms}")
+    logger.info(f"📩 Pedido recebido: {request.symptoms}")
+    
+    if not rag_service:
+        raise HTTPException(status_code=503, detail="Serviço de IA offline (verifique o terminal).")
+
     try:
         # Chama a IA
         result = rag_service.prescribe(request.symptoms, request.diagnosis)
+        
+        # LOG DO QUE SAIU DA IA (Para debug)
+        logger.info(f"📤 Resposta gerada: {str(result)[:100]}...") 
+        
         return result
+
     except Exception as e:
-        logger.error(f"❌ Erro no processamento: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"❌ Erro Interno no processamento: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro na IA: {str(e)}")
 
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

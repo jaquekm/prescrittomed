@@ -1,5 +1,5 @@
 """
-Schemas Pydantic para a API FastAPI - SmartRx AI
+Schemas Pydantic para a API FastAPI - PrescrittoMED
 """
 
 from typing import List, Optional
