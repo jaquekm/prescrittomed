@@ -77,6 +77,8 @@ def validate_prescription_payload(payload):
 
 def generate_prescription(contexto_clinico):
     sanitized = sanitize_context(contexto_clinico or {})
+    
+    # Schema definido (mesmo do seu código)
     schema = {
         "type": "object",
         "additionalProperties": False,
@@ -125,20 +127,38 @@ def generate_prescription(contexto_clinico):
 
     try:
         client = OpenAI(api_key=config("OPENAI_API_KEY"))
-        response = client.responses.create(
+        
+        # --- CORREÇÃO AQUI ---
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
-            input=[
+            # Mudei de 'input' para 'messages'
+            messages=[
                 {"role": "system", "content": prompt_sistema},
                 {"role": "user", "content": prompt_usuario},
             ],
-            response_format={"type": "json_schema", "json_schema": schema},
+            # Ajustei o formato do json_schema para o padrão correto
+            response_format={
+                "type": "json_schema", 
+                "json_schema": {
+                    "name": "prescricao_medica",
+                    "schema": schema,
+                    "strict": True
+                }
+            },
         )
-        payload = json.loads(response.output_text)
+        
+        # --- E CORREÇÃO AQUI NA LEITURA DA RESPOSTA ---
+        # Antes estava response.output_text (incorreto)
+        conteudo_json = response.choices[0].message.content
+        payload = json.loads(conteudo_json)
+
         if not validate_prescription_payload(payload):
             raise OpenAIPrescriptionError("Resposta da IA inválida. Tente novamente.")
         return payload
-    except Exception:
-        logger.exception("Falha ao gerar rascunho de prescrição.")
+
+    except Exception as e:
+        # Adicionei o erro 'e' no log para sabermos o que aconteceu se falhar de novo
+        logger.exception(f"Falha ao gerar rascunho de prescrição: {e}")
         raise OpenAIPrescriptionError(
             "Falha ao gerar rascunho de prescrição. Tente novamente mais tarde."
         )

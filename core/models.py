@@ -166,22 +166,152 @@ class Observacao(models.Model):
 
 
 class AuditLog(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    """
+    Audit Trail completo para compliance ANVISA RDC 657/2022
+    Registra imutavelmente todas as interações: Input, AI Suggestion, Doctor Edit, Final PDF
+    """
+    # Ações possíveis (conforme ActionType em schemas.py)
+    ACTION_INPUT_RECEIVED = "INPUT_RECEIVED"
+    ACTION_AI_SUGGESTION = "AI_SUGGESTION_GENERATED"
+    ACTION_DOCTOR_EDIT = "DOCTOR_EDIT"
+    ACTION_MANUAL_OVERRIDE = "MANUAL_OVERRIDE"
+    ACTION_PRESCRIPTION_FINALIZED = "PRESCRIPTION_FINALIZED"
+    ACTION_PDF_GENERATED = "PDF_GENERATED"
+    ACTION_BREAK_GLASS = "BREAK_GLASS_CONFIRMATION"
+    
+    ACTION_CHOICES = (
+        (ACTION_INPUT_RECEIVED, "Input Recebido"),
+        (ACTION_AI_SUGGESTION, "Sugestão IA Gerada"),
+        (ACTION_DOCTOR_EDIT, "Edição do Médico"),
+        (ACTION_MANUAL_OVERRIDE, "Override Manual"),
+        (ACTION_PRESCRIPTION_FINALIZED, "Prescrição Finalizada"),
+        (ACTION_PDF_GENERATED, "PDF Gerado"),
+        (ACTION_BREAK_GLASS, "Confirmação Break Glass"),
+    )
+
+    # Relacionamentos básicos
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="audit_logs")
     hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE)
-    action = models.CharField(max_length=100)
-    object_type = models.CharField(max_length=100)
-    object_id = models.CharField(max_length=100)
-    timestamp = models.DateTimeField(auto_now_add=True)
+    action = models.CharField(max_length=50, choices=ACTION_CHOICES)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    
+    # Relacionamentos opcionais com consulta/receita
+    consulta = models.ForeignKey(
+        Consulta, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name="audit_logs"
+    )
+    receita = models.ForeignKey(
+        Receita,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="audit_logs"
+    )
+    
+    # Dados de entrada (sanitizados, sem PII)
+    input_data = models.JSONField(null=True, blank=True, help_text="Dados de entrada sanitizados")
+    
+    # Sugestão da IA
+    ai_suggestion = models.JSONField(null=True, blank=True, help_text="Sugestão completa da IA em JSON")
+    source_ids_used = models.JSONField(
+        null=True, 
+        blank=True, 
+        help_text="Lista de source_ids das fontes consultadas pela IA"
+    )
+    confidence_score = models.FloatField(
+        null=True, 
+        blank=True, 
+        help_text="Score de confiança da IA (0.0 a 1.0)"
+    )
+    modelo_ia = models.CharField(
+        max_length=50, 
+        null=True, 
+        blank=True, 
+        help_text="Modelo de IA usado (ex: gpt-4o, claude-3.5-sonnet)"
+    )
+    prompt_version = models.PositiveIntegerField(
+        null=True, 
+        blank=True, 
+        help_text="Versão do prompt template usado"
+    )
+    
+    # Edições do médico
+    doctor_edit = models.JSONField(
+        null=True, 
+        blank=True, 
+        help_text="Detalhes da edição: {medicamento_index, campo_editado, valor_original, valor_editado, motivo}"
+    )
+    manual_override_reason = models.TextField(
+        null=True, 
+        blank=True, 
+        help_text="Motivo do override manual (ex: contraindicação ignorada)"
+    )
+    break_glass_confirmed = models.BooleanField(
+        null=True, 
+        blank=True, 
+        help_text="Confirmação de break glass (ex: medicamento categoria D/X em gravidez)"
+    )
+    
+    # Prescrição final
+    final_prescription = models.JSONField(
+        null=True, 
+        blank=True, 
+        help_text="Prescrição final validada pelo médico"
+    )
+    
+    # PDF gerado
+    pdf_hash = models.CharField(
+        max_length=64, 
+        null=True, 
+        blank=True, 
+        help_text="Hash SHA-256 do PDF gerado para integridade"
+    )
+    pdf_generated_at = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        help_text="Data/hora de geração do PDF"
+    )
+    
+    # Metadados de rastreabilidade
+    ip_address = models.GenericIPAddressField(null=True, blank=True, help_text="IP da requisição")
+    user_agent = models.TextField(null=True, blank=True, help_text="User agent do navegador")
+    session_id = models.CharField(
+        max_length=255, 
+        null=True, 
+        blank=True, 
+        help_text="ID da sessão para rastreamento"
+    )
+    
+    # Campos de compliance
+    lgpd_compliant = models.BooleanField(
+        default=True, 
+        help_text="Confirma que nenhum PII foi armazenado neste registro"
+    )
+    anvisa_compliant = models.BooleanField(
+        default=True, 
+        help_text="Confirma conformidade com RDC 657/2022"
+    )
 
     objects = HospitalScopedManager()
 
     def __str__(self):
-        return f"{self.action} - {self.object_type}:{self.object_id}"
+        consulta_ref = f"Consulta {self.consulta_id}" if self.consulta_id else "N/A"
+        return f"{self.get_action_display()} - {consulta_ref} - {self.timestamp}"
 
     class Meta:
+        verbose_name = "Audit Trail"
+        verbose_name_plural = "Audit Trails"
         indexes = [
-            models.Index(fields=["hospital"]),
+            models.Index(fields=["hospital", "timestamp"]),
+            models.Index(fields=["hospital", "action", "timestamp"]),
+            models.Index(fields=["consulta", "timestamp"]),
+            models.Index(fields=["receita", "timestamp"]),
+            models.Index(fields=["user", "timestamp"]),
         ]
+        ordering = ["-timestamp"]
 
 
 class PromptTemplate(models.Model):

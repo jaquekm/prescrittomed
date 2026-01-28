@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+"""
+Script para popular o banco de dados com dados iniciais (seed data).
+Insere medicamentos e protocolos na tabela knowledge_base para testes.
+"""
+
+import os
+import sys
+import random
+from datetime import date
+from pathlib import Path
+from typing import List
+
+# Adiciona o diretório raiz ao path para importar decouple
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+try:
+    from decouple import config
+    from sqlalchemy import create_engine, text, Column, String, Text, Date, Integer
+    from sqlalchemy.dialects.postgresql import UUID, JSONB
+    from sqlalchemy.orm import sessionmaker, declarative_base
+    from pgvector.sqlalchemy import Vector
+except ImportError as e:
+    print(f"❌ Erro: Dependências não instaladas.")
+    print(f"   Execute: pip install sqlalchemy pgvector python-decouple psycopg2-binary")
+    print(f"   Detalhes: {e}")
+    sys.exit(1)
+
+
+# Base para modelos SQLAlchemy
+Base = declarative_base()
+
+
+class KnowledgeBase(Base):
+    """Modelo SQLAlchemy para a tabela knowledge_base"""
+    __tablename__ = 'knowledge_base'
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text('uuid_generate_v4()'))
+    content = Column(Text, nullable=False)
+    embedding = Column(Vector(1536), nullable=True)
+    source_type = Column(String(50), nullable=False)
+    source_title = Column(String(255), nullable=False)
+    source_id = Column(String(255), nullable=True)
+    version_date = Column(Date, nullable=True)
+    validity_status = Column(String(20), default='ACTIVE')
+    
+    # CORREÇÃO AQUI: Renomeamos o atributo Python para meta_data, 
+    # mas mantemos o nome da coluna no banco como 'metadata'
+    meta_data = Column('metadata', JSONB, nullable=True)
+    
+    hospital_id = Column(Integer, nullable=True)
+    created_at = Column('created_at', nullable=False, server_default=text('CURRENT_TIMESTAMP'))
+    updated_at = Column('updated_at', nullable=False, server_default=text('CURRENT_TIMESTAMP'))
+
+
+def get_db_url():
+    """Obtém URL de conexão do banco de dados das variáveis de ambiente"""
+    database_url = os.getenv('DATABASE_URL')
+    
+    if database_url:
+        if database_url.startswith('postgres://'):
+            database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        return database_url
+    
+    host = config('POSTGRES_HOST', default='localhost')
+    port = config('POSTGRES_PORT', default=5432, cast=int)
+    database = config('POSTGRES_DB', default='prescrittomed_db')
+    user = config('POSTGRES_USER', default='prescrittomed')
+    password = config('POSTGRES_PASSWORD', default='prescrittomed_pass')
+    
+    return f"postgresql://{user}:{password}@{host}:{port}/{database}"
+
+
+def generate_fake_embedding(dimension: int = 1536) -> List[float]:
+    return [random.uniform(-1.0, 1.0) for _ in range(dimension)]
+
+
+def get_seed_data():
+    return [
+        {
+            'content': (
+                'Amoxicilina 500mg - Antibiótico de amplo espectro da classe das penicilinas. '
+                'Indicado para tratamento de infecções bacterianas do trato respiratório, '
+                'infecções do trato urinário, infecções de pele e tecidos moles. '
+                'Posologia: Adultos: 500mg a cada 8 horas por 7-10 dias. '
+                'Crianças: 25-50mg/kg/dia dividido em 3 doses. '
+                'Contraindicações: Hipersensibilidade a penicilinas. '
+                'Efeitos adversos: Diarreia, náusea, erupções cutâneas. '
+                'Interações: Pode reduzir eficácia de anticoncepcionais orais.'
+            ),
+            'source_type': 'DRUG_LEAFLET',
+            'source_title': 'Bula - Amoxicilina 500mg',
+            'source_id': 'bula_amoxicilina_500mg_001',
+            'version_date': date(2024, 1, 15),
+            'validity_status': 'ACTIVE',
+            'metadata': {
+                'tier': 3,
+                'medication_name': 'Amoxicilina',
+                'dosage': '500mg',
+                'pregnancy_category': 'B',
+                'is_pediatric': True,
+                'is_adult': True
+            }
+        },
+        {
+            'content': (
+                'Protocolo Clínico e Diretrizes Terapêuticas (PCDT) - Amigdalite Bacteriana. '
+                'Ministério da Saúde - Portaria SAS/MS nº 1.238/2014. '
+                'Diagnóstico: Clínico baseado em sinais e sintomas (dor de garganta, febre, '
+                'adenomegalia cervical, exsudato purulento). Teste rápido de estreptococo quando disponível. '
+                'Tratamento de primeira linha: Amoxicilina 500mg a cada 8 horas por 10 dias. '
+                'Alternativa em caso de alergia à penicilina: Azitromicina 500mg 1x/dia por 5 dias. '
+                'Critérios de melhora: Redução da febre e dor em 48-72h. '
+                'Critérios de encaminhamento: Falha terapêutica, complicações, recidivas frequentes.'
+            ),
+            'source_type': 'OFFICIAL_PROTOCOL',
+            'source_title': 'PCDT - Amigdalite Bacteriana',
+            'source_id': 'pcdt_amigdalite_001',
+            'version_date': date(2024, 3, 1),
+            'validity_status': 'ACTIVE',
+            'metadata': {
+                'tier': 1,
+                'protocol_number': 'SAS/MS 1238/2014',
+                'condition': 'Amigdalite Bacteriana',
+                'is_pediatric': True,
+                'is_adult': True
+            }
+        },
+        {
+            'content': (
+                'Dipirona 1g - Analgésico e antitérmico. Indicado para tratamento de dor '
+                'de intensidade moderada a intensa e febre. Posologia: Adultos: 1g a cada 6-8 horas, '
+                'máximo 4g/dia. Crianças acima de 3 meses: 10-15mg/kg a cada 6-8 horas. '
+                'Contraindicações: Hipersensibilidade ao fármaco, porfiria, insuficiência hepática grave, '
+                'insuficiência renal grave, asma induzida por AINEs, gravidez (3º trimestre). '
+                'Efeitos adversos: Reações cutâneas, agranulocitose (raro), hipotensão. '
+                'Precauções: Uso em gestantes (1º e 2º trimestre apenas se benefício supera risco), '
+                'lactantes, pacientes com histórico de alergia a AINEs.'
+            ),
+            'source_type': 'DRUG_LEAFLET',
+            'source_title': 'Bula - Dipirona 1g',
+            'source_id': 'bula_dipirona_1g_001',
+            'version_date': date(2024, 2, 10),
+            'validity_status': 'ACTIVE',
+            'metadata': {
+                'tier': 3,
+                'medication_name': 'Dipirona',
+                'dosage': '1g',
+                'pregnancy_category': 'D',
+                'is_pediatric': True,
+                'is_adult': True,
+                'warning_pregnancy': True
+            }
+        }
+    ]
+
+
+def seed_database():
+    """Função principal para popular o banco de dados"""
+    print("🌱 Iniciando seed do banco de dados...")
+    print("-" * 60)
+    
+    try:
+        db_url = get_db_url()
+        print(f"📊 Conectando ao banco de dados...")
+    except Exception as e:
+        print(f"❌ Erro ao obter configuração: {e}")
+        sys.exit(1)
+    
+    try:
+        engine = create_engine(db_url, echo=False)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        
+        # Obtém dados de seed
+        seed_items = get_seed_data()
+        
+        print(f"📝 Inserindo {len(seed_items)} itens...")
+        
+        for item_data in seed_items:
+            embedding_vector = generate_fake_embedding(1536)
+            
+            kb_item = KnowledgeBase(
+                content=item_data['content'],
+                embedding=embedding_vector,
+                source_type=item_data['source_type'],
+                source_title=item_data['source_title'],
+                source_id=item_data['source_id'],
+                version_date=item_data['version_date'],
+                validity_status=item_data['validity_status'],
+                # CORREÇÃO AQUI TAMBÉM: usando meta_data
+                meta_data=item_data['metadata']
+            )
+            
+            session.add(kb_item)
+            print(f"   ✓ {item_data['source_title']}")
+        
+        session.commit()
+        print("\n✅ Sucesso! Banco populado.")
+        
+    except Exception as e:
+        session.rollback()
+        print(f"\n❌ Erro ao inserir dados: {e}")
+    finally:
+        session.close()
+
+if __name__ == '__main__':
+    seed_database()

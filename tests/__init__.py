@@ -1,0 +1,1 @@
+# Testes para SmartRx AI
