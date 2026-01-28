@@ -1,226 +1,286 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Activity, Pill, Check, Wand2, Stethoscope, Printer, AlertTriangle } from 'lucide-react';
+import { 
+  Wand2, 
+  Printer, 
+  AlertCircle,
+  Check,
+  Trash2,
+  Edit2,
+  Info
+} from 'lucide-react';
+import PrescriptionModal from '@/components/PrescriptionModal';
 
 export default function Dashboard() {
+  // --- ESTADOS ---
   const [symptoms, setSymptoms] = useState('');
   const [diagnosis, setDiagnosis] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [selectedMeds, setSelectedMeds] = useState<string[]>([]);
-  const [error, setError] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // --- LÓGICA DE API ---
   const handleGenerate = async () => {
+    if (!symptoms) return alert("Por favor, descreva os sintomas.");
+    
     setIsLoading(true);
-    setError('');
     setResult(null);
     setSelectedMeds([]);
 
     try {
-      console.log("🚀 Enviando pedido ao Python...");
-      
       const response = await fetch('http://127.0.0.1:8000/api/v1/prescribe', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          symptoms: symptoms,
-          diagnosis: diagnosis || null
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symptoms, diagnosis }),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Erro do Servidor (${response.status}): ${errorText}`);
-      }
-
+      if (!response.ok) throw new Error("Erro na API");
       const data = await response.json();
-      console.log("📦 DADOS RECEBIDOS (RAW):", data); // Olhe o console do navegador (F12)
-
-      // --- LÓGICA DE NORMALIZAÇÃO (O SEGREDO PARA NÃO QUEBRAR) ---
-      // Tenta encontrar a lista de remédios onde quer que a IA tenha colocado
-      let listaParaExibir = [];
-
-      if (data.prescricoes && Array.isArray(data.prescricoes)) {
-        listaParaExibir = data.prescricoes;
-      } else if (data.medicamentos && Array.isArray(data.medicamentos)) {
-        listaParaExibir = data.medicamentos;
-      } else if (Array.isArray(data)) {
-        listaParaExibir = data;
-      }
-
-      if (listaParaExibir.length === 0) {
-        throw new Error("A IA respondeu, mas não encontrei a lista de medicamentos no formato esperado.");
-      }
-
-      // Salva no estado já normalizado
-      setResult({ prescricoes: listaParaExibir });
       
-    } catch (err: any) {
-      console.error("❌ ERRO NO FRONT:", err);
-      setError(err.message || 'Erro desconhecido ao processar resposta.');
+      let lista = data.prescricoes || data.medicamentos || [];
+      setResult({ prescricoes: lista });
+      
+    } catch (err) {
+      alert("Erro ao conectar com a IA. Verifique se o backend está rodando.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const toggleMedication = (medName: string) => {
+  // --- MANIPULAÇÃO DOS CARDS ---
+  const toggleAprovar = (medName: string) => {
     if (selectedMeds.includes(medName)) {
-      setSelectedMeds(selectedMeds.filter(name => name !== medName));
+      setSelectedMeds(selectedMeds.filter(n => n !== medName));
     } else {
       setSelectedMeds([...selectedMeds, medName]);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 p-6 font-sans text-slate-800">
-      
-      {/* HEADER */}
-      <header className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-emerald-900 flex items-center gap-2">
-            <Activity className="h-6 w-6 text-emerald-600" />
-            PrescrittoMED <span className="text-sm font-normal text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full">AI Beta</span>
-          </h1>
-        </div>
-        {selectedMeds.length > 0 && (
-          <div className="bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-lg animate-in fade-in slide-in-from-top-2">
-            <Printer className="h-4 w-4" />
-            <span className="font-bold">{selectedMeds.length}</span> na receita
-          </div>
-        )}
-      </header>
+  const removerCard = (indexToRemove: number) => {
+     if(!result) return;
+     const novaLista = result.prescricoes.filter((_: any, idx: number) => idx !== indexToRemove);
+     setResult({ ...result, prescricoes: novaLista });
+  };
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
-        {/* --- COLUNA ESQUERDA: INPUTS --- */}
-        <div className="lg:col-span-5 space-y-6">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="bg-emerald-900/5 p-4 border-b border-slate-100 flex items-center gap-2">
-              <Stethoscope className="h-5 w-5 text-emerald-700" />
-              <h2 className="font-semibold text-emerald-900">Anamnese</h2>
+  // Prepara dados para o Modal (PDF)
+  const getMedsParaImprimir = () => {
+    if (!result?.prescricoes) return [];
+    return result.prescricoes
+        .filter((item: any) => {
+            const nome = item.medicamento?.nome || item.nome_medicamento || item.nome;
+            return selectedMeds.includes(nome);
+        })
+        .map((item: any) => ({
+            nome: item.medicamento?.nome || item.nome_medicamento || item.nome,
+            // Garante que pegamos a dosagem correta ou um fallback
+            dosagem: item.medicamento?.dosagem || item.dosagem || "Verificar Bula",
+            quantidade: item.quantidade || "1 unidade",
+            // Garante que pegamos o modo de uso
+            uso: item.uso || item.posologia || item.modo_de_usar || item.instrucoes || "Conforme orientação médica."
+        }));
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
+      
+      {/* --- TOPO (VERDE & LOGO NOVA) --- */}
+      <nav className="bg-white border-b border-emerald-100 px-8 py-4 flex justify-between items-center sticky top-0 z-20 shadow-sm">
+        <div className="flex items-center gap-3">
+            {/* SUA LOGO AQUI (Certifique-se de salvar o arquivo em /public/logo-med.png) */}
+            <div className="h-10 w-10 relative">
+                 {/* Caso a imagem não carregue, use um fallback ou verifique o nome do arquivo */}
+                 <img 
+                    src="/logo-med.png" 
+                    alt="Logo" 
+                    className="object-contain h-full w-full"
+                    onError={(e) => {
+                        e.currentTarget.style.display = 'none'; // Esconde se der erro
+                        // Aqui poderia entrar um ícone backup se quisesse
+                    }}
+                 />
             </div>
             
-            <div className="p-6 space-y-5">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Sintomas</label>
-                <textarea 
-                  value={symptoms}
-                  onChange={(e) => setSymptoms(e.target.value)}
-                  placeholder="Ex: Paciente com dor de garganta forte, febre de 39 graus..."
-                  className="w-full h-32 p-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 text-sm resize-none"
-                />
-              </div>
+            <span className="font-bold text-2xl text-slate-800 tracking-tight">
+                Prescritto<span className="text-emerald-600">MED</span> AI
+            </span>
+        </div>
+        
+        {/* Botão de Gerar Receita (Verde) */}
+        {selectedMeds.length > 0 && (
+            <button 
+                onClick={() => setIsModalOpen(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-bold shadow-lg shadow-emerald-200 transition-all flex items-center gap-2 animate-in fade-in slide-in-from-right-4 hover:-translate-y-0.5"
+            >
+                <Printer className="h-5 w-5" />
+                Gerar Receita ({selectedMeds.length})
+            </button>
+        )}
+      </nav>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Diagnóstico (Opcional)</label>
-                <input 
-                  type="text"
-                  value={diagnosis}
-                  onChange={(e) => setDiagnosis(e.target.value)}
-                  placeholder="Ex: Amigdalite Bacteriana"
-                  className="w-full p-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 text-sm"
-                />
-              </div>
+      <main className="max-w-[1400px] mx-auto p-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        {/* --- COLUNA ESQUERDA: INPUTS --- */}
+        <div className="lg:col-span-4 space-y-4">
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                <h2 className="text-lg font-bold text-emerald-900 mb-6 flex items-center gap-2 border-b border-slate-50 pb-4">
+                    Dados Clínicos
+                </h2>
+                
+                <div className="space-y-5">
+                    {/* Campo Sintomas */}
+                    <div>
+                        <label className="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-2 block">
+                            Queixa Principal / Sintomas
+                        </label>
+                        <textarea 
+                            value={symptoms}
+                            onChange={(e) => setSymptoms(e.target.value)}
+                            className="w-full h-40 p-4 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none resize-none text-sm leading-relaxed transition-all"
+                            placeholder="Descreva os sintomas..."
+                        />
+                    </div>
 
-              {error && (
-                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-200 flex gap-2 items-start animate-in fade-in">
-                  <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
-                  <div>{error}</div>
+                    {/* Campo Diagnóstico (Corrigido) */}
+                    <div>
+                        <label className="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-2 block">
+                            Diagnóstico
+                        </label>
+                        <input 
+                            type="text"
+                            value={diagnosis}
+                            onChange={(e) => setDiagnosis(e.target.value)}
+                            className="w-full p-4 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm font-medium transition-all"
+                            placeholder="Ex: Amigdalite Bacteriana"
+                        />
+                    </div>
+
+                    {/* Botão de Ação Principal (Verde) */}
+                    <button 
+                        onClick={handleGenerate}
+                        disabled={isLoading || !symptoms}
+                        className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 transition-all flex justify-center items-center gap-2 mt-4 disabled:opacity-70 disabled:cursor-not-allowed transform active:scale-95"
+                    >
+                        {isLoading ? "Processando..." : <><Wand2 className="h-5 w-5" /> Gerar Prescrição Inteligente</>}
+                    </button>
                 </div>
-              )}
-
-              <button 
-                onClick={handleGenerate}
-                disabled={isLoading || !symptoms}
-                className={`w-full py-3 px-4 rounded-lg flex items-center justify-center gap-2 text-white font-medium transition-all shadow-md
-                  ${isLoading || !symptoms ? 'bg-slate-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5'}
-                `}
-              >
-                {isLoading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    Analisando Clínca...
-                  </>
-                ) : (
-                  <>
-                    <Wand2 className="h-5 w-5" />
-                    Gerar Prescrição Inteligente
-                  </>
-                )}
-              </button>
             </div>
-          </div>
+            
+            {/* Aviso */}
+            <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 flex gap-3">
+                <Info className="h-5 w-5 text-emerald-600 flex-shrink-0" />
+                <p className="text-xs text-emerald-800 leading-relaxed font-medium">
+                    A IA sugere condutas baseadas em protocolos. O médico deve sempre validar a posologia.
+                </p>
+            </div>
         </div>
 
-        {/* --- COLUNA DIREITA: RESULTADOS --- */}
-        <div className="lg:col-span-7">
-          {!result && !isLoading && (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-xl p-12 bg-slate-50/50">
-              <Activity className="h-16 w-16 mb-4 text-slate-300" />
-              <p>Descreva o caso clínico para iniciar.</p>
-            </div>
-          )}
-
-          {result && result.prescricoes && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <h3 className="text-lg font-bold text-slate-700 mb-4 px-1">Sugestão Terapêutica</h3>
-              
-              {result.prescricoes.map((item: any, index: number) => {
-                // --- LÓGICA DE EXIBIÇÃO ROBUSTA ---
-                // Verifica várias chaves possíveis para o NOME
-                const medNome = item.medicamento?.nome || item.nome_medicamento || item.nome || "Medicamento (Nome não identificado)";
-                
-                // Verifica várias chaves possíveis para a POSOLOGIA
-                let medPosologia = "Verificar na bula";
-                if (item.resumo?.como_usar_posologia) {
-                   medPosologia = Array.isArray(item.resumo.como_usar_posologia) 
-                      ? item.resumo.como_usar_posologia[0] 
-                      : item.resumo.como_usar_posologia;
-                } else if (item.posologia) {
-                   medPosologia = item.posologia;
-                }
-
-                // Verifica várias chaves possíveis para a NOTA
-                const nota = item.nota_fixa || item.instrucao || item.observacao || item.orientacao || "Siga orientações médicas padrão.";
-                
-                const isSelected = selectedMeds.includes(medNome);
-                
-                return (
-                  <div key={index} className={`rounded-xl shadow-sm border transition-all overflow-hidden bg-white
-                    ${isSelected ? 'border-emerald-500 ring-1 ring-emerald-500 shadow-md' : 'border-slate-200 hover:shadow-md'}
-                  `}>
-                    {/* Cabeçalho do Card */}
-                    <div className="p-4 flex justify-between items-start border-b border-slate-50">
-                      <div>
-                        <h4 className="text-lg font-bold text-slate-900">{medNome}</h4>
-                        <p className="text-sm text-slate-500 mt-1 font-medium">{medPosologia}</p>
-                      </div>
-                      <button 
-                        onClick={() => toggleMedication(medNome)}
-                        className={`p-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors
-                          ${isSelected ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-emerald-100 hover:text-emerald-700'}
-                        `}
-                      >
-                         {isSelected ? <><Check className="h-4 w-4" /> Aprovado</> : "Aprovar"}
-                      </button>
+        {/* --- COLUNA DIREITA: SUGESTÕES --- */}
+        <div className="lg:col-span-8">
+            {!result ? (
+                // Estado Vazio (Ajustado para tons neutros/verde)
+                <div className="h-full min-h-[400px] flex flex-col items-center justify-center text-slate-400 bg-white rounded-3xl border-2 border-dashed border-slate-200">
+                    <Wand2 className="h-16 w-16 mb-4 text-emerald-100" />
+                    <p className="font-medium text-slate-500">Preencha a anamnese ao lado.</p>
+                </div>
+            ) : (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-500">
+                    <div className="flex justify-between items-end px-1">
+                        <h3 className="text-xl font-bold text-slate-800">Sugestão Terapêutica</h3>
+                        <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
+                            Protocolo Vigente
+                        </span>
                     </div>
-                    {/* Corpo do Card (Nota) */}
-                    <div className="p-4 bg-blue-50/50">
-                       <div className="flex gap-3 items-start">
-                          <Pill className="h-4 w-4 text-blue-500 mt-1 shrink-0" />
-                          <p className="text-sm text-blue-800 leading-relaxed">{nota}</p>
-                       </div>
+
+                    <div className="space-y-4">
+                        {result.prescricoes.map((item: any, idx: number) => {
+                            // Extração robusta de dados
+                            const nome = item.medicamento?.nome || item.nome_medicamento || item.nome;
+                            const dosagem = item.medicamento?.dosagem || item.dosagem || "Dose padrão";
+                            const instrucoes = item.uso || item.posologia || item.instrucoes || "Instruções não detalhadas.";
+                            
+                            const isApproved = selectedMeds.includes(nome);
+
+                            return (
+                                <div key={idx} className={`bg-white rounded-2xl border transition-all shadow-sm overflow-hidden group
+                                    ${isApproved 
+                                        ? 'border-emerald-500 ring-1 ring-emerald-500 shadow-md shadow-emerald-50' 
+                                        : 'border-slate-200 hover:border-emerald-300 hover:shadow-md'}
+                                `}>
+                                    <div className="p-6">
+                                        {/* Cabeçalho do Card */}
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <h4 className={`text-xl font-bold mb-1 ${isApproved ? 'text-emerald-800' : 'text-slate-800'}`}>
+                                                    {nome}
+                                                </h4>
+                                                <span className="inline-block bg-slate-100 text-slate-600 text-xs font-bold px-2.5 py-1 rounded border border-slate-200">
+                                                    {dosagem}
+                                                </span>
+                                            </div>
+                                            
+                                            {item.alerta && (
+                                                <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-1 rounded flex items-center gap-1">
+                                                    <AlertCircle className="h-3 w-3" /> Atenção
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {/* Instruções (Corpo) */}
+                                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-slate-600 text-sm leading-relaxed flex gap-3 mb-5">
+                                            <Info className="h-5 w-5 text-emerald-500 mt-0.5 flex-shrink-0" />
+                                            <p>{instrucoes}</p>
+                                        </div>
+
+                                        {/* Botões de Ação (Estilo Verde) */}
+                                        <div className="flex justify-end gap-3 pt-2">
+                                            <button 
+                                                onClick={() => alert("Você poderá editar os detalhes finais na tela de impressão.")}
+                                                className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg border border-transparent hover:border-emerald-100 transition-all flex items-center gap-2"
+                                            >
+                                                <Edit2 className="h-3.5 w-3.5" /> Editar
+                                            </button>
+                                            
+                                            <button 
+                                                onClick={() => removerCard(idx)}
+                                                className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-100 transition-all flex items-center gap-2"
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" /> Remover
+                                            </button>
+
+                                            <button 
+                                                onClick={() => toggleAprovar(nome)}
+                                                className={`px-6 py-2 text-sm font-bold rounded-lg border transition-all flex items-center gap-2 shadow-sm
+                                                    ${isApproved 
+                                                        ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700' 
+                                                        : 'bg-white text-emerald-600 border-emerald-600 hover:bg-emerald-50'}
+                                                `}
+                                            >
+                                                {isApproved ? <><Check className="h-4 w-4" /> Aprovado</> : "Aprovar"}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Barra Decorativa Inferior se Aprovado */}
+                                    {isApproved && <div className="h-1.5 w-full bg-emerald-500"></div>}
+                                </div>
+                            )
+                        })}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                </div>
+            )}
         </div>
-      </div>
+
+      </main>
+
+      {/* --- MODAL DE IMPRESSÃO --- */}
+      <PrescriptionModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        medicamentos={getMedsParaImprimir()} 
+        diagnosticoInicial={diagnosis}
+      />
     </div>
   );
 }
