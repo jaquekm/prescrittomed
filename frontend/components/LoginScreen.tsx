@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import { Mail, Lock, ArrowRight, Stethoscope, CheckCircle2, Fingerprint } from 'lucide-react';
-// Importamos a conexão que acabamos de criar no Passo 3
 import { supabase } from '@/lib/supabaseClient'; 
 
 interface LoginScreenProps {
@@ -11,8 +10,6 @@ interface LoginScreenProps {
 
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [loading, setLoading] = useState(false);
-  
-  // Estados para pegar o que o usuário digita
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -21,7 +18,6 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     setLoading(true);
 
     try {
-        // --- A MÁGICA DO SUPABASE ACONTECE AQUI ---
         const { data, error } = await supabase.auth.signInWithPassword({
             email: email,
             password: password,
@@ -35,11 +31,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
         if (data.session) {
             console.log("Logado com sucesso!", data);
-            
-            // Salva o "Crachá" (Token) no navegador
             localStorage.setItem('prescritto_token', data.session.access_token);
-            
-            // Avisa o app principal que deu certo
             onLoginSuccess();
         }
 
@@ -65,7 +57,8 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                <div className="bg-emerald-500/20 p-2 rounded-lg backdrop-blur-sm border border-emerald-500/30">
                  <Stethoscope className="h-6 w-6 text-emerald-100" />
                </div>
-               <span className="text-2xl font-bold text-white tracking-tight">PrescrittoMED AI</span>
+               {/* Removi o "AI" daqui também para manter o padrão que você pediu */}
+               <span className="text-2xl font-bold text-white tracking-tight">PrescrittoMED</span>
             </div>
 
             <h1 className="text-5xl font-bold text-white leading-tight mb-6">
@@ -105,7 +98,8 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                         required
                         value={email}
                         onChange={e => setEmail(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm transition-all"
+                        // ADICIONEI text-black AQUI
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm transition-all text-black"
                     />
                 </div>
 
@@ -118,7 +112,8 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                         required
                         value={password}
                         onChange={e => setPassword(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm transition-all"
+                        // ADICIONEI text-black AQUI
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm transition-all text-black"
                     />
                 </div>
 

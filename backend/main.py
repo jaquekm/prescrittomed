@@ -1,19 +1,29 @@
 import logging
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends  # <--- [NOVO] Adicionei Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# --- IMPORTAÇÃO BLINDADA (Funciona rodando da raiz ou da pasta backend) ---
+# --- IMPORTAÇÃO DA SEGURANÇA (O CADEADO) ---
+try:
+    from auth_bearer import JWTBearer
+except ImportError:
+    # Fallback caso esteja rodando de uma pasta acima
+    try:
+        from backend.auth_bearer import JWTBearer
+    except ImportError:
+        raise ImportError("❌ ERRO: O arquivo 'auth_bearer.py' não foi encontrado ao lado do main.py!")
+
+# --- IMPORTAÇÃO BLINDADA DO RAG ---
 try:
     from backend.rag_service import RAGService
 except ImportError:
     try:
         from rag_service import RAGService
     except ImportError:
-        RAGService = None # Fallback para não quebrar o import
+        RAGService = None 
 
-# --- MODELO SIMPLES (Só para receber o pedido) ---
+# --- MODELO ---
 class PrescriptionRequest(BaseModel):
     symptoms: str
     diagnosis: str | None = None
@@ -24,10 +34,10 @@ logger = logging.getLogger("PrescrittoMED")
 
 app = FastAPI(title="PrescrittoMED API")
 
-# --- CORS (Fundamental para o Frontend acessar) ---
+# --- CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Libera acesso para localhost:3000
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,22 +58,18 @@ async def startup_event():
     except Exception as e:
         logger.error(f"❌ Erro ao instanciar IA: {e}")
 
-# --- ROTA PRINCIPAL ---
-# OBS: Removi 'response_model' para evitar erros de validação (HTTP 500)
-@app.post("/api/v1/prescribe") 
+# --- ROTA PRINCIPAL (AGORA PROTEGIDA 🔒) ---
+@app.post("/api/v1/prescribe", dependencies=[Depends(JWTBearer())]) 
 async def prescribe(request: PrescriptionRequest):
-    logger.info(f"📩 Pedido recebido: {request.symptoms}")
+    logger.info(f"📩 Pedido recebido (Usuário Autenticado): {request.symptoms}")
     
     if not rag_service:
-        raise HTTPException(status_code=503, detail="Serviço de IA offline (verifique o terminal).")
+        raise HTTPException(status_code=503, detail="Serviço de IA offline.")
 
     try:
         # Chama a IA
         result = rag_service.prescribe(request.symptoms, request.diagnosis)
-        
-        # LOG DO QUE SAIU DA IA (Para debug)
         logger.info(f"📤 Resposta gerada: {str(result)[:100]}...") 
-        
         return result
 
     except Exception as e:
