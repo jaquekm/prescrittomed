@@ -1,72 +1,91 @@
-from django.http import HttpResponse
+from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel
+from typing import List
+import json
+import io
+import textwrap
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-import io
-import json
+from auth_bearer import JWTBearer
+from openai_prescription import generate_prescription_rag 
 
-def gerar_receita_pdf(request):
-    if request.method == 'POST':
-        data = json.loads(request.body)
-        medicamentos = data.get('medicamentos', [])
-        observacoes = data.get('observacoes', '')
-        paciente_nome = data.get('paciente', 'Paciente Não Identificado')
+router = APIRouter()
 
-        # Criar um buffer de bytes para o PDF
-        buffer = io.BytesIO()
+# --- MODELOS DE DADOS (Corrigindo o erro 422) ---
+class PatientData(BaseModel):
+    anamnese: str  # O frontend precisa enviar com este nome exato
+    hipotese: str = ""
+
+class MedicamentoPDF(BaseModel):
+    nome: str
+    posologia: str
+    aviso: str = ""
+
+class ReceitaRequest(BaseModel):
+    paciente_nome: str = "Paciente"
+    medicamentos: List[MedicamentoPDF]
+
+# --- ROTA 1: APENAS MOSTRAR DADOS NA TELA ---
+@router.post("/api/v1/prescribe", dependencies=[Depends(JWTBearer())])
+async def consult_ai(data: PatientData):
+    try:
+        # Gera o texto da IA
+        ai_response_text = generate_prescription_rag(data.anamnese, data.hipotese)
         
-        # Configurar o Canvas (A4)
+        # Garante que é um JSON limpo
+        ai_response_text = ai_response_text.replace("```json", "").replace("```", "")
+        receita_data = json.loads(ai_response_text)
+        
+        return receita_data 
+
+    except Exception as e:
+        print(f"Erro na IA: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- ROTA 2: GERAR O PDF FINAL (Com os dados que você conferiu) ---
+@router.post("/api/v1/generate-pdf", dependencies=[Depends(JWTBearer())])
+async def create_pdf(data: ReceitaRequest):
+    try:
+        buffer = io.BytesIO()
         p = canvas.Canvas(buffer, pagesize=A4)
         largura, altura = A4
         
-        # --- CABEÇALHO ---
+        # Cabeçalho
         p.setFont("Helvetica-Bold", 20)
-        p.drawString(50, altura - 50, "PrescrittoMED") # Seu Logo aqui
+        p.drawString(50, altura - 50, "PrescrittoMED")
+        p.line(50, altura - 60, largura - 50, altura - 60)
         
-        p.setFont("Helvetica", 12)
-        p.drawString(50, altura - 80, f"Paciente: {paciente_nome}")
-        p.line(50, altura - 90, largura - 50, altura - 90) # Linha divisória
-
-        # --- CORPO DA RECEITA (Medicamentos) ---
-        y = altura - 130
-        p.setFont("Helvetica-Bold", 14)
-        p.drawString(50, y, "Prescrição:")
-        y -= 25
+        y = altura - 100
         
-        p.setFont("Helvetica", 12)
-        for med in medicamentos:
-            # Ex: Paracetamol 500mg
-            texto_med = f"• {med['nome']} - {med['dosagem']}" 
-            p.drawString(70, y, texto_med)
-            y -= 15
+        for med in data.medicamentos:
+            # Nome do Medicamento
+            p.setFont("Helvetica-Bold", 14)
+            p.setFillColor(colors.darkblue)
+            p.drawString(50, y, f"• {med.nome}")
+            y -= 20
             
-            # Instruções de uso (ex: 1 cp a cada 8h)
-            p.setFont("Helvetica-Oblique", 10)
-            p.setFillColor(colors.darkgrey)
-            p.drawString(90, y, f"Uso: {med['uso']}")
-            p.setFillColor(colors.black)
+            # Posologia
             p.setFont("Helvetica", 12)
-            y -= 25 # Espaço entre itens
-
-        # --- OBSERVAÇÕES ---
-        if observacoes:
-            y -= 20
-            p.setFont("Helvetica-Bold", 12)
-            p.drawString(50, y, "Observações Clínicas:")
-            y -= 20
-            p.setFont("Helvetica", 11)
+            p.setFillColor(colors.black)
+            lines = textwrap.wrap(f"Uso: {med.posologia}", width=80)
+            for line in lines:
+                p.drawString(70, y, line)
+                y -= 15
+                
+            # Aviso
+            if med.aviso:
+                p.setFont("Helvetica-Oblique", 10)
+                p.setFillColor(colors.red)
+                p.drawString(70, y, f"Obs: {med.aviso}")
+                y -= 15
             
-            # Dica: Para texto longo, precisaria usar textObject ou paragraph, 
-            # mas aqui vai um exemplo simples:
-            p.drawString(70, y, observacoes)
-
-        # --- RODAPÉ ---
-        p.setFont("Helvetica", 10)
-        p.drawString(50, 50, "Documento gerado eletronicamente via PrescrittoMED AI.")
-        
-        # Finalizar PDF
-        p.showPage()
+            y -= 15 # Espaço entre itens
+            
         p.save()
-        
         buffer.seek(0)
-        return HttpResponse(buffer, content_type='application/pdf')
+        return Response(content=buffer.getvalue(), media_type="application/pdf")
+
+    except Exception as e:
+        print(f"Erro PDF: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
