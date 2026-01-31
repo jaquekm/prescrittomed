@@ -27,14 +27,14 @@ function PrescriptionApp({ onLogout }: { onLogout: () => void }) {
          return;
       }
 
-      // Envia 'anamnese' para bater com o Python (Resolve erro 422)
+      // Envia os campos esperados pelo backend (resolve erro 422)
       const response = await fetch("http://localhost:8000/api/v1/prescribe", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ anamnese: sintomas, hipotese: diagnostico }),
+        body: JSON.stringify({ symptoms: sintomas, diagnosis: diagnostico }),
       });
 
       if (response.status === 403) {
